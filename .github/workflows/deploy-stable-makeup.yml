@@ -1,0 +1,56 @@
+name: Deploy Stable-Makeup to Replicate
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if no changes'
+        required: false
+        default: false
+        type: boolean
+  push:
+    paths:
+      - 'stable-makeup-replicate/**'
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install Cog
+      run: |
+        curl -o /usr/local/bin/cog -L https://github.com/replicate/cog/releases/latest/download/cog_`uname -s`_`uname -m`
+        chmod +x /usr/local/bin/cog
+        
+    - name: Verify Cog installation
+      run: cog --version
+      
+    - name: Login to Replicate
+      env:
+        REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+      run: cog login
+      
+    - name: Change to stable-makeup directory
+      run: cd stable-makeup-replicate
+      
+    - name: Build and push model
+      env:
+        REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+      run: |
+        cd stable-makeup-replicate
+        cog push ${{ secrets.REPLICATE_MODEL_NAME }}
+        
+    - name: Deployment success
+      run: |
+        echo "✅ Stable-Makeup model deployed successfully!"
+        echo "🔗 Model URL: https://replicate.com/${{ secrets.REPLICATE_MODEL_NAME }}" 

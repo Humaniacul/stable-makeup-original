@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "AI Makeup Assistant",
+    "slug": "ai-makeup-assistant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "description": "Get personalized makeup recommendations using AI technology. Upload your selfie and discover your perfect makeup style with curated products and step-by-step instructions.",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFF5F8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aimakeup.assistant"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFF5F8"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.aimakeup.assistant",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "AI Makeup Assistant",
+      "shortName": "AI Makeup"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photos to let you select a selfie for makeup analysis.",
+          "cameraPermission": "This app needs access to your camera to let you take a selfie for makeup analysis."
+        }
+      ],
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "This app needs access to camera for real-time facial analysis and makeup try-on.",
+          "enableMicrophonePermission": false
+        }
+      ]
+    ]
+  }
+}
