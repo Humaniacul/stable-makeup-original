@@ -1,20 +1,17 @@
-name: Deploy Stable Makeup to Replicate
+name: Deploy to Replicate
 
 on:
-  workflow_dispatch:
   push:
     branches: [ master ]
-    paths:
-      - 'stable-makeup-replicate/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      
+    - uses: actions/checkout@v3
+    
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -35,9 +32,4 @@ jobs:
         REPLICATE_MODEL_NAME: r8.im/humaniacul/stable-makeup-ai
       run: |
         cd stable-makeup-replicate
-        echo "Current directory: $(pwd)"
-        echo "Files in directory:"
-        ls -la
-        echo "Contents of cog.yaml:"
-        cat cog.yaml
         cog push $REPLICATE_MODEL_NAME 
