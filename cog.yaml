@@ -5,14 +5,13 @@ build:
   cuda: "11.8"
   python_version: "3.10"
   python_packages:
-    # Core ML packages - optimized versions
+    # Minimal core packages
     - torch==2.0.1
-    - torchvision==0.15.2
     - diffusers==0.25.1
     - transformers==4.36.0
     - accelerate==0.23.0
     
-    # Essential image processing only
+    # Essential image processing
     - opencv-python-headless==4.8.1.78
     - Pillow==10.0.1
     - numpy==1.26.0
@@ -22,7 +21,6 @@ build:
     - facexlib==0.3.0
     - spiga==0.0.6
     - requests==2.31.0
-    - einops==0.7.0
     - safetensors==0.4.0
     
     # Essential compatibility

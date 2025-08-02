@@ -1,0 +1,76 @@
+# Large model files
+stable-makeup-pure/models/
+stable-makeup-fresh/models/
+stable-makeup-replicate/models/
+models/
+
+# Git and version control
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and guides
+*.md
+docs/
+email-templates/
+
+# Development files
+node_modules/
+.env
+.env.local
+*.log
+
+# Large assets
+assets/
+images/
+test_imgs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Large datasets
+datasets/
+data/
+
+# Backup files
+*.bak
+*.backup
+
+# Test files
+tests/
+test_*
+*_test.py
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Development scripts
+scripts/
+tools/
+
+# Large subdirectories that aren't needed for the model
+stable-makeup-pure/diffusers/
+stable-makeup-pure/datasets/
+stable-makeup-pure/assets/ 
