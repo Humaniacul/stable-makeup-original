@@ -1,0 +1,33 @@
+# EAS Build ignore - Reduces archive size from 522MB
+# Backend files (not needed for mobile app build)
+backend/
+proxy-server.js
+node_modules/@mediapipe/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Development files
+.env*
+*.local
+auth-debug.js
+test-*.js
+debug-*.js
+
+# Documentation
+*.md
+email-templates/
+RESEND_INTEGRATION_SETUP.md
+EMAIL_DELIVERABILITY_GUIDE.md
+EMAIL_IMPLEMENTATION_GUIDE.md
+AUTHENTICATION_SETUP.md
+SUPABASE_STORAGE_SETUP.md
+setup-production-auth.md
+
+# Large unnecessary files
+*.mp4
+*.mov
+*.avi
+database/ 

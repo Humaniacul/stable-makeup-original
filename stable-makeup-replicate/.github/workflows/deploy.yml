@@ -2,7 +2,7 @@ name: Deploy to Replicate
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
@@ -30,4 +30,4 @@ jobs:
     - name: Push to Replicate
       env:
         REPLICATE_MODEL_NAME: ${{ secrets.REPLICATE_MODEL_NAME }}
-      run: cog push $REPLICATE_MODEL_NAME 
+      run: cog push $REPLICATE_MODEL_NAME
