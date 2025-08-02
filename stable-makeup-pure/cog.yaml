@@ -4,40 +4,10 @@ build:
   gpu: true
   cuda: "11.8"
   python_version: "3.10"
-  python_packages:
-    # Minimal core packages
-    - torch==2.0.1
-    - diffusers==0.25.1
-    - transformers==4.36.0
-    - accelerate==0.23.0
-    
-    # Essential image processing
-    - opencv-python-headless==4.8.1.78
-    - Pillow==10.0.1
-    - numpy==1.26.0
-    
-    # Core face detection
-    - mediapipe==0.10.8
-    - facexlib==0.3.0
-    - spiga==0.0.6
-    - requests==2.31.0
-    - safetensors==0.4.0
-    
-    # Essential compatibility
-    - huggingface-hub==0.20.3
-    - tokenizers==0.15.0
-    
-    # Cog requirement
-    - cog
+  run:
+    - "apt-get update && apt-get install -y --no-install-recommends git ffmpeg libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 && rm -rf /var/lib/apt/lists/*"
+
   
-  system_packages:
-    - libgl1-mesa-glx
-    - libglib2.0-0
-    - libsm6
-    - libxext6
-    - libxrender-dev
-    - libgomp1
-    - ffmpeg
-    - git
+
 
 predict: "predict.py:Predictor" 
