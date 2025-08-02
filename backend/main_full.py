@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Replicate API configuration
-REPLICATE_API_TOKEN = "r8_DRpnlDQlHbJBHKiAYvQzeYnY70ZDwpD2VP6Uo"
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 REPLICATE_BASE_URL = "https://api.replicate.com/v1"
 
 # Supabase configuration
