@@ -22,6 +22,10 @@ jobs:
         sudo curl -o /usr/local/bin/cog -L https://github.com/replicate/cog/releases/latest/download/cog_`uname -s`_`uname -m`
         sudo chmod +x /usr/local/bin/cog
 
+    - name: Login to Docker Hub
+      run: |
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
     - name: Login to Replicate
       run: |
         echo ${{ secrets.REPLICATE_API_TOKEN }} | cog login --token-stdin
