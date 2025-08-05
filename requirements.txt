@@ -14,5 +14,5 @@ facexlib==0.3.0
 spiga==0.0.6
 requests==2.31.0
 matplotlib==3.7.2
-gradio==4.44.0
+gradio==3.50.2
 dlib==19.24.2
