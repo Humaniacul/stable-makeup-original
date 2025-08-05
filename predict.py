@@ -204,10 +204,23 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         
         print(f"🎨 Starting Stable-Makeup inference with intensity: {makeup_intensity}")
         
+        # Ensure Stable-Makeup directory exists and is set up
+        if not os.path.exists("Stable-Makeup"):
+            print("📥 Cloning original Stable-Makeup repository...")
+            subprocess.run([
+                "git", "clone", 
+                "https://github.com/Xiaojiu-z/Stable-Makeup.git"
+            ], check=True)
+        
         # Change to the Stable-Makeup directory and fix issues before importing
         os.chdir("Stable-Makeup")
         self.fix_all_issues()
         sys.path.append(os.getcwd())
+        
+        # Create required directories
+        os.makedirs("test_imgs/id", exist_ok=True)
+        os.makedirs("test_imgs/makeup", exist_ok=True)
+        os.makedirs("output", exist_ok=True)
         
         # Save input images to the required directories
         source_path = "test_imgs/id/source.jpg"
