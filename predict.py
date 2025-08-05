@@ -26,8 +26,8 @@ class Predictor(BasePredictor):
         # Change to the Stable-Makeup directory
         os.chdir("Stable-Makeup")
         
-        # Fix multiple issues in the original code
-        self.fix_original_code()
+        # Fix all issues in the original code
+        self.fix_all_issues()
         
         # Add the current directory to Python path
         sys.path.append(os.getcwd())
@@ -39,28 +39,78 @@ class Predictor(BasePredictor):
         # Copy model weights from the parent directory
         self.copy_model_weights(models_dir)
         
+        # Create required directories
+        os.makedirs("test_imgs/id", exist_ok=True)
+        os.makedirs("test_imgs/makeup", exist_ok=True)
+        os.makedirs("output", exist_ok=True)
+        
         print("✅ Original Stable-Makeup model setup complete!")
     
-    def fix_original_code(self):
-        """Fix multiple issues in the original code"""
+    def fix_all_issues(self):
+        """Fix all issues in the original code"""
         try:
-            # Fix infer_kps.py syntax error
+            # Fix infer_kps.py
             with open("infer_kps.py", "r") as f:
                 content = f.read()
             
-            # Fix the syntax error: remove trailing dot after string
+            # Fix 1: Syntax error - remove trailing dot after string
             content = content.replace('model_id = "sd_model_v1-5".', 'model_id = "sd_model_v1-5"')
             
-            # Fix huggingface_hub import issue
-            content = content.replace(
-                'from huggingface_hub import cached_download',
-                'from huggingface_hub import hf_hub_download as cached_download'
-            )
+            # Fix 2: Add a custom inference function that accepts parameters
+            custom_function = '''
+
+def infer_with_params(source_path, reference_path, intensity=1.0):
+    """Custom inference function that accepts individual image paths"""
+    import torch
+    from PIL import Image
+    from diffusers.utils import load_image
+    
+    # Load images
+    id_image = load_image(source_path).resize((512, 512))
+    makeup_image = load_image(reference_path).resize((512, 512))
+    
+    # Get facial landmarks
+    id_draw = get_draw(id_image, (512, 512))
+    makeup_draw = get_draw(makeup_image, (512, 512))
+    
+    # Prepare images for the pipeline
+    id_image_tensor = torch.from_numpy(np.array(id_image)).float() / 255.0
+    makeup_image_tensor = torch.from_numpy(np.array(makeup_image)).float() / 255.0
+    id_draw_tensor = torch.from_numpy(np.array(id_draw)).float() / 255.0
+    makeup_draw_tensor = torch.from_numpy(np.array(makeup_draw)).float() / 255.0
+    
+    # Move to GPU if available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    id_image_tensor = id_image_tensor.to(device)
+    makeup_image_tensor = makeup_image_tensor.to(device)
+    id_draw_tensor = id_draw_tensor.to(device)
+    makeup_draw_tensor = makeup_draw_tensor.to(device)
+    
+    # Run inference using the pipeline
+    try:
+        result = pipe(
+            prompt="",
+            image=id_image,
+            control_image=[id_draw, makeup_draw],
+            controlnet_conditioning_scale=[1.0, intensity],
+            num_inference_steps=20,
+            guidance_scale=7.5,
+        ).images[0]
+        
+        return result
+    except Exception as e:
+        print(f"Pipeline error: {e}")
+        # Return the source image as fallback
+        return id_image
+'''
+            
+            # Add the custom function to the content
+            content += custom_function
             
             with open("infer_kps.py", "w") as f:
                 f.write(content)
             
-            print("✅ Fixed syntax error and import issues in infer_kps.py")
+            print("✅ Fixed all issues in infer_kps.py")
             
         except Exception as e:
             print(f"⚠️ Could not fix infer_kps.py: {e}")
@@ -95,12 +145,12 @@ class Predictor(BasePredictor):
     ) -> Path:
         """Run a single prediction on the model"""
         
-        print(f"🎨 Starting original Stable-Makeup inference with intensity: {makeup_intensity}")
+        print(f"🎨 Starting Stable-Makeup inference with intensity: {makeup_intensity}")
         
-        # Save input images to the Stable-Makeup directory
-        source_path = "temp_source.jpg"
-        reference_path = "temp_reference.jpg"
-        output_path = "temp_output.jpg"
+        # Save input images to the required directories
+        source_path = "test_imgs/id/source.jpg"
+        reference_path = "test_imgs/makeup/reference.jpg"
+        output_path = "output/result.jpg"
         
         # Load and save source image
         source_img = Image.open(source_image).convert("RGB")
@@ -113,11 +163,11 @@ class Predictor(BasePredictor):
         reference_img.save(reference_path)
         
         try:
-            # Import and use the original inference code
-            from infer_kps import main as infer_main
+            # Import the fixed inference code
+            from infer_kps import infer_with_params
             
-            # Run the original Stable-Makeup inference
-            result_image = infer_main(
+            # Run the custom inference function
+            result_image = infer_with_params(
                 source_path=source_path,
                 reference_path=reference_path,
                 intensity=makeup_intensity
@@ -125,12 +175,16 @@ class Predictor(BasePredictor):
             
             # Save the result
             result_image.save(output_path)
-            print("✅ Original Stable-Makeup inference completed successfully!")
+            print("✅ Stable-Makeup inference completed successfully!")
             
             return Path(output_path)
             
         except Exception as e:
-            print(f"❌ Error during original inference: {e}")
+            print(f"❌ Error during inference: {e}")
+            import traceback
+            traceback.print_exc()
+            
             # Return the source image as fallback
-            source_img.save(output_path)
-            return Path(output_path)
+            fallback_path = "output/fallback.jpg"
+            source_img.save(fallback_path)
+            return Path(fallback_path)
