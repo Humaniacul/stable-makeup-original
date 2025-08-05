@@ -22,14 +22,10 @@ jobs:
         sudo curl -o /usr/local/bin/cog -L https://github.com/replicate/cog/releases/latest/download/cog_`uname -s`_`uname -m`
         sudo chmod +x /usr/local/bin/cog
 
-    - name: Login to Replicate FIRST
+    - name: Login to Replicate
       run: |
         echo ${{ secrets.REPLICATE_API_TOKEN }} | cog login --token-stdin
 
-    - name: Verify Replicate Login
-      run: |
-        cog whoami
-
-    - name: Build and Push to Replicate
+    - name: Push to Replicate
       run: |
         cog push humaniacul/stable-makeup-original
