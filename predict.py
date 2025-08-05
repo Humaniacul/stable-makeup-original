@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import re
 from typing import List
 import torch
 from PIL import Image
@@ -49,6 +50,9 @@ class Predictor(BasePredictor):
     def fix_all_issues(self):
         """Fix all issues in the original code"""
         try:
+            # Fix huggingface_hub imports in all Python files
+            self.fix_huggingface_imports()
+            
             # Fix infer_kps.py
             with open("infer_kps.py", "r") as f:
                 content = f.read()
@@ -56,7 +60,10 @@ class Predictor(BasePredictor):
             # Fix 1: Syntax error - remove trailing dot after string
             content = content.replace('model_id = "sd_model_v1-5".', 'model_id = "sd_model_v1-5"')
             
-            # Fix 2: Add a custom inference function that accepts parameters
+            # Fix 2: Fix the wrong import path
+            content = content.replace('from utils.pipeline_sd15 import', 'from pipeline_sd15 import')
+            
+            # Fix 3: Add a custom inference function that accepts parameters
             custom_function = '''
 
 def infer_with_params(source_path, reference_path, intensity=1.0):
@@ -114,6 +121,56 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             
         except Exception as e:
             print(f"⚠️ Could not fix infer_kps.py: {e}")
+    
+    def fix_huggingface_imports(self):
+        """Fix huggingface_hub import issues in all Python files"""
+        print("🔧 Fixing huggingface_hub imports...")
+        
+        for root, dirs, files in os.walk("."):
+            for file in files:
+                if file.endswith('.py'):
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        original_content = content
+                        
+                        # Fix 1: Replace cached_download import
+                        content = re.sub(
+                            r'from huggingface_hub import.*?cached_download',
+                            'from huggingface_hub import hf_hub_download as cached_download',
+                            content,
+                            flags=re.MULTILINE | re.DOTALL
+                        )
+                        
+                        # Fix 2: Replace direct cached_download usage
+                        content = re.sub(
+                            r'from huggingface_hub import cached_download',
+                            'from huggingface_hub import hf_hub_download as cached_download',
+                            content
+                        )
+                        
+                        # Fix 3: Add alias if both are imported
+                        if 'from huggingface_hub import' in content and 'cached_download' in content:
+                            # Check if hf_hub_download is already imported
+                            if 'hf_hub_download' not in content:
+                                content = re.sub(
+                                    r'from huggingface_hub import (.*?)(\n|$)',
+                                    r'from huggingface_hub import \1, hf_hub_download as cached_download\2',
+                                    content
+                                )
+                        
+                        # Only write if content changed
+                        if content != original_content:
+                            with open(filepath, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            print(f"✅ Fixed {filepath}")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Error processing {filepath}: {e}")
+        
+        print("✅ Huggingface imports fixed!")
         
     def copy_model_weights(self, models_dir: str):
         """Copy model weights from the parent directory"""
