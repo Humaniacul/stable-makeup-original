@@ -204,6 +204,11 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         
         print(f"🎨 Starting Stable-Makeup inference with intensity: {makeup_intensity}")
         
+        # Change to the Stable-Makeup directory and fix issues before importing
+        os.chdir("Stable-Makeup")
+        self.fix_all_issues()
+        sys.path.append(os.getcwd())
+        
         # Save input images to the required directories
         source_path = "test_imgs/id/source.jpg"
         reference_path = "test_imgs/makeup/reference.jpg"
