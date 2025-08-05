@@ -29,4 +29,3 @@ jobs:
     - name: Push to Replicate
       run: |
         cog push humaniacul/stable-makeup-original
-# Test change
