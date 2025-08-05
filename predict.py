@@ -26,6 +26,9 @@ class Predictor(BasePredictor):
         # Change to the Stable-Makeup directory
         os.chdir("Stable-Makeup")
         
+        # Fix the syntax error in infer_kps.py
+        self.fix_infer_kps_syntax()
+        
         # Add the current directory to Python path
         sys.path.append(os.getcwd())
         
@@ -37,6 +40,24 @@ class Predictor(BasePredictor):
         self.copy_model_weights(models_dir)
         
         print("✅ Original Stable-Makeup model setup complete!")
+    
+    def fix_infer_kps_syntax(self):
+        """Fix the syntax error in the original infer_kps.py file"""
+        try:
+            # Read the original file
+            with open("infer_kps.py", "r") as f:
+                content = f.read()
+            
+            # Fix the syntax error: remove trailing dot after string
+            content = content.replace('model_id = "sd_model_v1-5".', 'model_id = "sd_model_v1-5"')
+            
+            # Write the fixed content back
+            with open("infer_kps.py", "w") as f:
+                f.write(content)
+            
+            print("✅ Fixed syntax error in infer_kps.py")
+        except Exception as e:
+            print(f"⚠️ Could not fix infer_kps.py: {e}")
         
     def copy_model_weights(self, models_dir: str):
         """Copy model weights from the parent directory"""
