@@ -26,6 +26,6 @@ jobs:
       run: |
         echo ${{ secrets.REPLICATE_API_TOKEN }} | cog login --token-stdin
 
-    - name: Push to Replicate
+    - name: Push to Replicate (using Replicate registry)
       run: |
-        cog push humaniacul/stable-makeup-original
+        cog push r8.im/humaniacul/stable-makeup-original
