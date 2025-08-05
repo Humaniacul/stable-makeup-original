@@ -18,6 +18,9 @@ jobs:
         python-version: "3.10"
 
     - name: Install Cog
+    - name: Login to Docker Hub (Alternative Method)
+      run: |
+        docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
       run: |
         sudo curl -o /usr/local/bin/cog -L https://github.com/replicate/cog/releases/latest/download/cog_`uname -s`_`uname -m`
         sudo chmod +x /usr/local/bin/cog
