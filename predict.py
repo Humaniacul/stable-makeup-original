@@ -26,8 +26,8 @@ class Predictor(BasePredictor):
         # Change to the Stable-Makeup directory
         os.chdir("Stable-Makeup")
         
-        # Fix the syntax error in infer_kps.py
-        self.fix_infer_kps_syntax()
+        # Fix multiple issues in the original code
+        self.fix_original_code()
         
         # Add the current directory to Python path
         sys.path.append(os.getcwd())
@@ -41,21 +41,27 @@ class Predictor(BasePredictor):
         
         print("✅ Original Stable-Makeup model setup complete!")
     
-    def fix_infer_kps_syntax(self):
-        """Fix the syntax error in the original infer_kps.py file"""
+    def fix_original_code(self):
+        """Fix multiple issues in the original code"""
         try:
-            # Read the original file
+            # Fix infer_kps.py syntax error
             with open("infer_kps.py", "r") as f:
                 content = f.read()
             
             # Fix the syntax error: remove trailing dot after string
             content = content.replace('model_id = "sd_model_v1-5".', 'model_id = "sd_model_v1-5"')
             
-            # Write the fixed content back
+            # Fix huggingface_hub import issue
+            content = content.replace(
+                'from huggingface_hub import cached_download',
+                'from huggingface_hub import hf_hub_download as cached_download'
+            )
+            
             with open("infer_kps.py", "w") as f:
                 f.write(content)
             
-            print("✅ Fixed syntax error in infer_kps.py")
+            print("✅ Fixed syntax error and import issues in infer_kps.py")
+            
         except Exception as e:
             print(f"⚠️ Could not fix infer_kps.py: {e}")
         
