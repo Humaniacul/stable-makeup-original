@@ -66,7 +66,14 @@ class Predictor(BasePredictor):
             # Fix 2: Fix the wrong import path
             content = content.replace('from utils.pipeline_sd15 import', 'from pipeline_sd15 import')
             
-            # Fix 3: Add a custom inference function that accepts parameters
+            # Fix 3: Fix syntax error at line 65 - missing comma
+            content = re.sub(
+                r'safety_checker=Noneet=Unet,',
+                'safety_checker=None, unet=Unet,',
+                content
+            )
+            
+            # Fix 4: Add a custom inference function that accepts parameters
             custom_function = '''
 
 def infer_with_params(source_path, reference_path, intensity=1.0):
