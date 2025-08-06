@@ -19,9 +19,7 @@ build:
     - requests==2.31.0
     - matplotlib==3.7.2
     - gradio==3.50.2
-    - dlib==19.24.2
     - datasets==2.14.6
-    - git+https://github.com/sajjjadayobi/FaceLib.git@382841efec823f059f49754e5d378abb12cfb551
   run:
     - echo "Installing system dependencies..."
     - apt-get update && apt-get install -y cmake build-essential libboost-all-dev libgtk-3-dev
@@ -29,6 +27,8 @@ build:
     - wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
     - bash miniconda.sh -b -p /opt/conda
     - export PATH="/opt/conda/bin:$PATH" && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && conda install -c conda-forge dlib -y
+    - echo "Installing facelib from Git..."
+    - pip install git+https://github.com/sajjjadayobi/FaceLib.git@382841efec823f059f49754e5d378abb12cfb551
   system_packages:
     - libgl1-mesa-glx
     - libglib2.0-0
