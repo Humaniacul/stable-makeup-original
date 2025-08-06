@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import requests
 import re
 from typing import List
 import torch
@@ -25,6 +26,9 @@ class Predictor(BasePredictor):
             ], check=True)
         
         # Change to the Stable-Makeup directory
+        
+        # Fix SPIGA model loading issue
+        self.fix_spiga_model_loading()
         os.chdir("Stable-Makeup")
         
         # Fix all issues in the original code
@@ -353,7 +357,10 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 "https://github.com/Xiaojiu-z/Stable-Makeup.git"
             ], check=True)
         
-        # Change to the Stable-Makeup directory and fix issues before importing
+        # Change to the Stable-Makeup directory
+        
+        # Fix SPIGA model loading issue
+        self.fix_spiga_model_loading() and fix issues before importing
         os.chdir("Stable-Makeup")
         self.fix_all_issues()
         sys.path.append(os.getcwd())
@@ -404,3 +411,40 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             fallback_path = "output/fallback.jpg"
             source_img.save(fallback_path)
             return Path(fallback_path)
+
+    def fix_spiga_model_loading(self):
+        """Fix SPIGA model loading by downloading the model file manually"""
+        print("🔧 Fixing SPIGA model loading...")
+        
+        # Create SPIGA models directory
+        spiga_models_dir = os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights")
+        os.makedirs(spiga_models_dir, exist_ok=True)
+        
+        # Check if model already exists
+        model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
+        if os.path.exists(model_path):
+            print("✅ SPIGA model already exists")
+            return
+        
+        # Download the model file manually
+        print("📥 Downloading SPIGA model...")
+        url = "https://drive.google.com/uc?export=download&confirm=yes&id=1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
+        
+        try:
+            # Use requests to download with proper headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, headers=headers, stream=True)
+            response.raise_for_status()
+            
+            with open(model_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print("✅ SPIGA model downloaded successfully!")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to download SPIGA model: {e}")
+            print("⚠️ Will try to continue without SPIGA model...")
+
