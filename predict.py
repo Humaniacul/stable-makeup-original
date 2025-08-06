@@ -53,6 +53,9 @@ class Predictor(BasePredictor):
             # Fix huggingface_hub imports in all Python files
             self.fix_huggingface_imports()
             
+            # Fix diffusers imports in all Python files
+            self.fix_diffusers_imports()
+            
             # Fix infer_kps.py
             with open("infer_kps.py", "r") as f:
                 content = f.read()
@@ -171,6 +174,55 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                         print(f"⚠️ Error processing {filepath}: {e}")
         
         print("✅ Huggingface imports fixed!")
+    
+    def fix_diffusers_imports(self):
+        """Fix diffusers import issues in all Python files"""
+        print("🔧 Fixing diffusers imports...")
+        
+        for root, dirs, files in os.walk("."):
+            for file in files:
+                if file.endswith('.py'):
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        original_content = content
+                        
+                        # Fix 1: Remove USE_PEFT_BACKEND import (not available in diffusers 0.21.4)
+                        content = re.sub(
+                            r'USE_PEFT_BACKEND,\s*',
+                            '',
+                            content
+                        )
+                        content = re.sub(
+                            r',\s*USE_PEFT_BACKEND',
+                            '',
+                            content
+                        )
+                        content = re.sub(
+                            r'from diffusers\.utils import \([\s\S]*?USE_PEFT_BACKEND[\s\S]*?\)',
+                            lambda m: re.sub(r'USE_PEFT_BACKEND,\s*', '', m.group(0)),
+                            content
+                        )
+                        
+                        # Fix 2: Remove empty import lines
+                        content = re.sub(
+                            r'from diffusers\.utils import \(\)',
+                            '# from diffusers.utils import ()  # Removed empty import',
+                            content
+                        )
+                        
+                        # Only write if content changed
+                        if content != original_content:
+                            with open(filepath, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            print(f"✅ Fixed {filepath}")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Error processing {filepath}: {e}")
+        
+        print("✅ Diffusers imports fixed!")
         
     def copy_model_weights(self, models_dir: str):
         """Copy model weights from the parent directory"""
