@@ -19,6 +19,9 @@ build:
     - requests==2.31.0
     - matplotlib==3.7.2
     - gradio==3.50.2
+    - dlib==19.24.2
+    - datasets==2.14.0
+    - facelib==0.0.1
   run:
     - echo "Installing system dependencies..."
     - apt-get update && apt-get install -y cmake build-essential libboost-all-dev libgtk-3-dev
