@@ -5,6 +5,7 @@ transformers==4.34.0
 accelerate==0.23.0
 huggingface-hub==0.17.3
 safetensors==0.3.3
+pyarrow==14.0.0
 opencv-python==4.8.1.78
 Pillow==10.0.1
 numpy==1.26.0
