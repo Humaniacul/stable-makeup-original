@@ -213,14 +213,26 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                             content
                         )
                         
-                        # Fix 3: Remove empty import lines
+                        # Fix 3: Remove 'un' import (not available in diffusers 0.21.4)
+                        content = re.sub(
+                            r'un,\s*',
+                            '',
+                            content
+                        )
+                        content = re.sub(
+                            r',\s*un',
+                            '',
+                            content
+                        )
+                        
+                        # Fix 4: Remove empty import lines
                         content = re.sub(
                             r'from diffusers\.utils import \(\)',
                             '# from diffusers.utils import ()  # Removed empty import',
                             content
                         )
                         
-                        # Fix 4: Clean up trailing commas in import statements
+                        # Fix 5: Clean up trailing commas in import statements
                         content = re.sub(
                             r'from diffusers\.utils import \([\s\S]*?,\s*\)',
                             lambda m: re.sub(r',\s*\)', ')', m.group(0)),
