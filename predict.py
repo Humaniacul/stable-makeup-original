@@ -156,10 +156,24 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                             content
                         )
                         
-                        # Fix 3: Remove trailing dots after strings
+                        # Fix 3: Missing comma in function parameters (pipeline_sd15.py line 162)
+                        content = re.sub(
+                            r'tokenizer=tokenizeret=unet,',
+                            'tokenizer=tokenizer, unet=unet,',
+                            content
+                        )
+                        
+                        # Fix 4: Remove trailing dots after strings
                         content = re.sub(
                             r'(\w+)\s*=\s*"([^"]+)"\.',
                             r'\1 = "\2"',
+                            content
+                        )
+                        
+                        # Fix 5: Fix any other missing commas in function calls
+                        content = re.sub(
+                            r'(\w+)=(\w+)(\w+)=(\w+),',
+                            r'\1=\2, \3=\4,',
                             content
                         )
                         
