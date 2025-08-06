@@ -56,6 +56,9 @@ class Predictor(BasePredictor):
             # Fix diffusers imports in all Python files
             self.fix_diffusers_imports()
             
+            # Fix syntax errors in all Python files
+            self.fix_syntax_errors()
+            
             # Fix infer_kps.py
             with open("infer_kps.py", "r") as f:
                 content = f.read()
@@ -66,14 +69,7 @@ class Predictor(BasePredictor):
             # Fix 2: Fix the wrong import path
             content = content.replace('from utils.pipeline_sd15 import', 'from pipeline_sd15 import')
             
-            # Fix 3: Fix syntax error at line 65 - missing comma
-            content = re.sub(
-                r'safety_checker=Noneet=Unet,',
-                'safety_checker=None, unet=Unet,',
-                content
-            )
-            
-            # Fix 4: Add a custom inference function that accepts parameters
+            # Fix 3: Add a custom inference function that accepts parameters
             custom_function = '''
 
 def infer_with_params(source_path, reference_path, intensity=1.0):
@@ -131,6 +127,52 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             
         except Exception as e:
             print(f"⚠️ Could not fix infer_kps.py: {e}")
+    
+    def fix_syntax_errors(self):
+        """Fix syntax errors in all Python files"""
+        print("🔧 Fixing syntax errors...")
+        
+        for root, dirs, files in os.walk("."):
+            for file in files:
+                if file.endswith('.py'):
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        original_content = content
+                        
+                        # Fix 1: Missing comma in function parameters
+                        content = re.sub(
+                            r'safety_checker=Noneet=Unet,',
+                            'safety_checker=None, unet=Unet,',
+                            content
+                        )
+                        
+                        # Fix 2: Missing comma in function parameters (pipeline_sd15.py line 132)
+                        content = re.sub(
+                            r'tokenizer: CLIPTokenizeret: UNet2DConditionModel,',
+                            'tokenizer: CLIPTokenizer, unet: UNet2DConditionModel,',
+                            content
+                        )
+                        
+                        # Fix 3: Remove trailing dots after strings
+                        content = re.sub(
+                            r'(\w+)\s*=\s*"([^"]+)"\.',
+                            r'\1 = "\2"',
+                            content
+                        )
+                        
+                        # Only write if content changed
+                        if content != original_content:
+                            with open(filepath, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            print(f"✅ Fixed {filepath}")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Error processing {filepath}: {e}")
+        
+        print("✅ Syntax errors fixed!")
     
     def fix_huggingface_imports(self):
         """Fix huggingface_hub import issues in all Python files"""
