@@ -200,16 +200,30 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                             '',
                             content
                         )
+                        
+                        # Fix 2: Remove scale_lora_layers import (not available in diffusers 0.21.4)
                         content = re.sub(
-                            r'from diffusers\.utils import \([\s\S]*?USE_PEFT_BACKEND[\s\S]*?\)',
-                            lambda m: re.sub(r'USE_PEFT_BACKEND,\s*', '', m.group(0)),
+                            r'scale_lora_layers,\s*',
+                            '',
+                            content
+                        )
+                        content = re.sub(
+                            r',\s*scale_lora_layers',
+                            '',
                             content
                         )
                         
-                        # Fix 2: Remove empty import lines
+                        # Fix 3: Remove empty import lines
                         content = re.sub(
                             r'from diffusers\.utils import \(\)',
                             '# from diffusers.utils import ()  # Removed empty import',
+                            content
+                        )
+                        
+                        # Fix 4: Clean up trailing commas in import statements
+                        content = re.sub(
+                            r'from diffusers\.utils import \([\s\S]*?,\s*\)',
+                            lambda m: re.sub(r',\s*\)', ')', m.group(0)),
                             content
                         )
                         
