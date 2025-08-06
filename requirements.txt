@@ -16,3 +16,5 @@ requests==2.31.0
 matplotlib==3.7.2
 gradio==3.50.2
 dlib==19.24.2
+facelib @ git+https://github.com/sajjjadayobi/FaceLib.git@382841efec823f059f49754e5d378abb12cfb551
+datasets==2.14.6
