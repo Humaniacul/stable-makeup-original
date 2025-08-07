@@ -301,10 +301,15 @@ def unscale_lora_layers(*args, **kwargs): pass'''
         print("✅ Diffusers imports fixed!")
 
     def fix_syntax_errors(self):
-        """Fix syntax errors like trailing dots"""
+        """Fix syntax errors like trailing dots and malformed parameters"""
         patterns_to_fix = [
             (r'model_id = "sd_model_v1-5"\.', 'model_id = "sd_model_v1-5"'),
             (r'\.(?=\s*$)', ''),  # Remove trailing dots at end of lines
+            # Fix the specific syntax error we saw: safety_checker=Noneet=Unet,
+            (r'safety_checker=Noneet=Unet,', 'safety_checker=None, unet=Unet,'),
+            (r'safety_checker=Noneet=', 'safety_checker=None, unet='),
+            # Fix other potential malformed parameters
+            (r'(\w+)=(\w+)=(\w+)', r'\1=\2, \3='),  # Fix pattern like param1=param2=param3
         ]
         
         for root, dirs, files in os.walk("."):
