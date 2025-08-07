@@ -167,35 +167,38 @@ class Predictor(BasePredictor):
         print("🔧 Fixing syntax errors...")
         self.fix_syntax_errors()
         
-        print("🔧 Fixing pipeline_sd15.py PEFT imports...")
-        self.fix_pipeline_peft_imports()
+        print("🔧 Fixing pipeline_sd15.py imports completely...")
+        self.fix_pipeline_sd15_file()
         
         print("🔧 Adding missing functions to infer_kps.py...")
         self.add_infer_function()
         
         print("✅ Fixed all issues in infer_kps.py")
 
-    def fix_pipeline_peft_imports(self):
-        """Fix the USE_PEFT_BACKEND import issue in pipeline_sd15.py"""
+    def fix_pipeline_sd15_file(self):
+        """Completely fix the pipeline_sd15.py file imports"""
         pipeline_file = "pipeline_sd15.py"
         if os.path.exists(pipeline_file):
             with open(pipeline_file, "r") as f:
                 content = f.read()
             
-            # Replace the problematic diffusers.utils import with a try-except block
-            old_import = """from diffusers.utils import (
-    deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    logging,
-    randn_tensor,
-    replace_example_docstring,
-    USE_PEFT_BACKEND,
-    scale_lora_layers,
-    unscale_lora_layers,
-)"""
+            # Read the original file to see the exact import structure
+            print("🔍 Checking pipeline_sd15.py imports...")
             
-            new_import = """from diffusers.utils import (
+            # Fix any broken import statements first
+            # Remove any incomplete imports that might cause "cannot import name 'un'" error
+            content = re.sub(r'from diffusers\.utils import[^)]*\bun\b[^)]*\)', '', content, flags=re.DOTALL)
+            content = re.sub(r',\s*un\s*,', ',', content)
+            content = re.sub(r',\s*un\s*\)', ')', content)
+            content = re.sub(r'\(\s*un\s*,', '(', content)
+            
+            # Now fix the PEFT-related imports by replacing the entire import block
+            # Look for the diffusers.utils import and replace it
+            import_pattern = r'from diffusers\.utils import \([^)]+\)'
+            
+            if re.search(import_pattern, content, re.DOTALL):
+                # Replace the entire import block
+                new_import = '''from diffusers.utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -212,15 +215,31 @@ except ImportError:
     def scale_lora_layers(*args, **kwargs):
         pass
     def unscale_lora_layers(*args, **kwargs):
-        pass"""
-            
-            if "USE_PEFT_BACKEND," in content:
-                content = content.replace(old_import, new_import)
-                with open(pipeline_file, "w") as f:
-                    f.write(content)
-                print("✅ Fixed PEFT imports in pipeline_sd15.py")
+        pass'''
+                
+                content = re.sub(import_pattern, new_import, content, flags=re.DOTALL)
+                print("✅ Replaced diffusers.utils import block")
             else:
-                print("⚠️ PEFT import pattern not found in pipeline_sd15.py")
+                # Try to find individual imports and fix them
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if 'from diffusers.utils import' in line and any(peft_term in line for peft_term in ['USE_PEFT_BACKEND', 'scale_lora_layers', 'unscale_lora_layers']):
+                        # Replace this line with safe imports
+                        lines[i] = '''from diffusers.utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+# PEFT compatibility for diffusers 0.21.4
+USE_PEFT_BACKEND = False
+def scale_lora_layers(*args, **kwargs): pass
+def unscale_lora_layers(*args, **kwargs): pass'''
+                        break
+                content = '\n'.join(lines)
+                print("✅ Fixed individual import lines")
+            
+            # Write the fixed content back
+            with open(pipeline_file, "w") as f:
+                f.write(content)
+            print("✅ Fixed pipeline_sd15.py imports completely")
+        else:
+            print("⚠️ pipeline_sd15.py not found")
 
     def fix_huggingface_imports(self):
         """Fix huggingface_hub imports across all Python files"""
@@ -250,7 +269,7 @@ except ImportError:
         """Fix diffusers imports by removing non-existent imports"""
         for root, dirs, files in os.walk("."):
             for file in files:
-                if file.endswith(".py"):
+                if file.endswith(".py") and "pipeline_sd15.py" not in file:  # Skip pipeline_sd15.py, we handle it separately
                     filepath = os.path.join(root, file)
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
@@ -260,7 +279,8 @@ except ImportError:
                         problematic_imports = [
                             "USE_PEFT_BACKEND",
                             "scale_lora_layers", 
-                            "unscale_lora_layers"
+                            "unscale_lora_layers",
+                            "un"  # Fix the broken 'un' import
                         ]
                         
                         modified = False
