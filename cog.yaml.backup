@@ -31,9 +31,6 @@ build:
     - export PATH="/opt/conda/bin:$PATH" && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && conda install -c conda-forge dlib -y
     - echo "Installing facelib from Git..."
     - pip install git+https://github.com/sajjjadayobi/FaceLib.git@382841efec823f059f49754e5d378abb12cfb551
-    - echo "Copying SPIGA model file..."
-    - mkdir -p /root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights/
-    - cp /src/spiga_300wpublic.pt /root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights/
   system_packages:
     - libgl1-mesa-glx
     - libglib2.0-0
