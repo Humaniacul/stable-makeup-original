@@ -197,15 +197,22 @@ class Predictor(BasePredictor):
             import_pattern = r'from diffusers\.utils import \([^)]+\)'
             
             if re.search(import_pattern, content, re.DOTALL):
-                # Replace the entire import block
+                # Replace the entire import block with only functions that exist in diffusers 0.21.4
                 new_import = '''from diffusers.utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+
+# Handle missing functions in diffusers 0.21.4
+try:
+    from diffusers.utils import randn_tensor
+except ImportError:
+    def randn_tensor(shape, generator=None, device=None, dtype=None):
+        """Fallback implementation of randn_tensor"""
+        return torch.randn(shape, generator=generator, device=device, dtype=dtype)
 
 # Handle PEFT imports that don't exist in diffusers 0.21.4
 try:
@@ -223,9 +230,12 @@ except ImportError:
                 # Try to find individual imports and fix them
                 lines = content.split('\n')
                 for i, line in enumerate(lines):
-                    if 'from diffusers.utils import' in line and any(peft_term in line for peft_term in ['USE_PEFT_BACKEND', 'scale_lora_layers', 'unscale_lora_layers']):
+                    if 'from diffusers.utils import' in line and any(peft_term in line for peft_term in ['USE_PEFT_BACKEND', 'scale_lora_layers', 'unscale_lora_layers', 'randn_tensor']):
                         # Replace this line with safe imports
-                        lines[i] = '''from diffusers.utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+                        lines[i] = '''from diffusers.utils import deprecate, is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
+# Missing functions in diffusers 0.21.4
+def randn_tensor(shape, generator=None, device=None, dtype=None):
+    return torch.randn(shape, generator=generator, device=device, dtype=dtype)
 # PEFT compatibility for diffusers 0.21.4
 USE_PEFT_BACKEND = False
 def scale_lora_layers(*args, **kwargs): pass
@@ -280,7 +290,8 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                             "USE_PEFT_BACKEND",
                             "scale_lora_layers", 
                             "unscale_lora_layers",
-                            "un"  # Fix the broken 'un' import
+                            "un",  # Fix the broken 'un' import
+                            "randn_tensor"  # This doesn't exist in 0.21.4
                         ]
                         
                         modified = False
