@@ -448,3 +448,66 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             print(f"⚠️ Failed to download SPIGA model: {e}")
             print("⚠️ Will try to continue without SPIGA model...")
 
+
+    def fix_spiga_model_loading(self):
+        """Fix SPIGA model loading by downloading the model file manually and patching SPIGA"""
+        print("🔧 Fixing SPIGA model loading...")
+        
+        # Create SPIGA models directory
+        spiga_models_dir = os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights")
+        os.makedirs(spiga_models_dir, exist_ok=True)
+        
+        # Check if model already exists
+        model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
+        if os.path.exists(model_path):
+            print("✅ SPIGA model already exists")
+        else:
+            # Download the model file manually
+            print("📥 Downloading SPIGA model...")
+            url = "https://huggingface.co/spiga/spiga_300wpublic/resolve/main/spiga_300wpublic.pt"
+            
+            try:
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                response = requests.get(url, headers=headers, stream=True)
+                response.raise_for_status()
+                
+                with open(model_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                print("✅ SPIGA model downloaded successfully!")
+                
+            except Exception as e:
+                print(f"⚠️ Failed to download SPIGA model: {e}")
+                print("⚠️ Will try to continue without SPIGA model...")
+                return
+        
+        # Patch SPIGA to use our local model file
+        print("🔧 Patching SPIGA to use local model...")
+        spiga_framework_path = os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py")
+        
+        if os.path.exists(spiga_framework_path):
+            try:
+                with open(spiga_framework_path, 'r') as f:
+                    content = f.read()
+                
+                # Replace the torch.hub.load_state_dict_from_url call
+                old_code = 'model_state_dict = torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,'
+                new_code = f'''# Use local model file instead of downloading
+                model_state_dict = torch.load("{model_path}", map_location="cpu")'''
+                
+                if old_code in content:
+                    content = content.replace(old_code, new_code)
+                    
+                    with open(spiga_framework_path, 'w') as f:
+                        f.write(content)
+                    
+                    print("✅ SPIGA patched successfully!")
+                else:
+                    print("⚠️ Could not find the exact code to patch in SPIGA")
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to patch SPIGA: {e}")
+
