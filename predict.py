@@ -26,10 +26,10 @@ class Predictor(BasePredictor):
             ], check=True)
         
         # Change to the Stable-Makeup directory
+        os.chdir("Stable-Makeup")
         
         # Fix SPIGA model loading issue
         self.fix_spiga_model_loading()
-        os.chdir("Stable-Makeup")
         
         # Fix all issues in the original code
         self.fix_all_issues()
@@ -357,11 +357,11 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 "https://github.com/Xiaojiu-z/Stable-Makeup.git"
             ], check=True)
         
-        # Change to the Stable-Makeup directory
+        # Change to the Stable-Makeup directory and fix issues before importing
+        os.chdir("Stable-Makeup")
         
         # Fix SPIGA model loading issue
-        self.fix_spiga_model_loading() and fix issues before importing
-        os.chdir("Stable-Makeup")
+        self.fix_spiga_model_loading()
         self.fix_all_issues()
         sys.path.append(os.getcwd())
         
