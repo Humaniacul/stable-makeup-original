@@ -48,6 +48,9 @@ class Predictor(BasePredictor):
             # Fix all issues before imports
             self.fix_all_issues()
             
+            # Fix system-wide diffusers package 
+            self.fix_system_diffusers()
+            
             # Load and save images
             source_img = Image.open(source_image).convert("RGB")
             reference_img = Image.open(reference_image).convert("RGB")
@@ -86,6 +89,49 @@ class Predictor(BasePredictor):
             fallback_path = "/tmp/fallback.jpg"
             Image.open(source_image).save(fallback_path)
             return Path(fallback_path)
+
+    def fix_system_diffusers(self):
+        """Fix the system-wide diffusers package imports"""
+        print("🔧 Fixing system-wide diffusers imports...")
+        
+        diffusers_init_path = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/diffusers/utils/__init__.py"
+        
+        try:
+            if os.path.exists(diffusers_init_path):
+                with open(diffusers_init_path, "r") as f:
+                    content = f.read()
+                
+                # Remove problematic imports
+                problematic_imports = [
+                    "USE_PEFT_BACKEND",
+                    "scale_lora_layers", 
+                    "unscale_lora_layers"
+                ]
+                
+                modified = False
+                for import_name in problematic_imports:
+                    # Remove from imports
+                    if f"from .peft_utils import {import_name}" in content:
+                        content = content.replace(f"from .peft_utils import {import_name}\n", "")
+                        modified = True
+                    # Remove from __all__ list
+                    if f'"{import_name}",' in content:
+                        content = content.replace(f'"{import_name}",', "")
+                        modified = True
+                    if f"'{import_name}'," in content:
+                        content = content.replace(f"'{import_name}',", "")
+                        modified = True
+                
+                if modified:
+                    with open(diffusers_init_path, "w") as f:
+                        f.write(content)
+                    print("✅ Fixed system diffusers imports!")
+                else:
+                    print("✅ System diffusers already fixed!")
+            else:
+                print("⚠️ System diffusers __init__.py not found")
+        except Exception as e:
+            print(f"⚠️ Could not fix system diffusers: {e}")
 
     def fix_spiga_model_loading(self):
         print("🔧 Fixing SPIGA model loading...")
