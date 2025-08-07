@@ -778,3 +778,80 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         else:
             print("⚠️ SPIGA framework file not found")
 
+
+    def fix_spiga_model_loading(self):
+        """Fix SPIGA model loading by downloading from working URL"""
+        print("🔧 Fixing SPIGA model loading...")
+        
+        # Create SPIGA models directory
+        spiga_models_dir = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights"
+        os.makedirs(spiga_models_dir, exist_ok=True)
+        
+        # Check if model exists in the correct location
+        model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
+        
+        if not os.path.exists(model_path):
+            print("📥 Downloading SPIGA model from direct link...")
+            
+            # Try working download URL (based on direct model download)
+            url = "https://github.com/andresprados/SPIGA/releases/download/v1.0.0/spiga_300wpublic.pt"
+            
+            try:
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                
+                response = requests.get(url, headers=headers, stream=True, timeout=30)
+                response.raise_for_status()
+                
+                total_size = int(response.headers.get('content-length', 0))
+                print(f"📦 Downloading {total_size / (1024*1024):.1f} MB...")
+                
+                with open(model_path, 'wb') as f:
+                    downloaded = 0
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                percent = (downloaded / total_size) * 100
+                                print(f"📊 Progress: {percent:.1f}%", end='\r')
+                
+                print("\n✅ SPIGA model downloaded successfully!")
+                
+            except Exception as e:
+                print(f"❌ Failed to download SPIGA model: {e}")
+                print("⚠️ Will try to continue without SPIGA model...")
+                return
+        else:
+            print("✅ SPIGA model already exists")
+        
+        # Patch SPIGA to use our local model file
+        print("🔧 Patching SPIGA to use local model...")
+        spiga_framework_path = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py"
+        
+        if os.path.exists(spiga_framework_path):
+            try:
+                with open(spiga_framework_path, 'r') as f:
+                    content = f.read()
+                
+                # Replace the torch.hub.load_state_dict_from_url call
+                old_code = 'model_state_dict = torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,'
+                new_code = f'''# Use local model file instead of downloading
+                model_state_dict = torch.load("{model_path}", map_location="cpu")'''
+                
+                if old_code in content:
+                    content = content.replace(old_code, new_code)
+                    
+                    with open(spiga_framework_path, 'w') as f:
+                        f.write(content)
+                    
+                    print("✅ SPIGA patched successfully!")
+                else:
+                    print("⚠️ Could not find the exact code to patch in SPIGA")
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to patch SPIGA: {e}")
+        else:
+            print("⚠️ SPIGA framework file not found")
+
