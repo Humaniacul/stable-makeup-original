@@ -146,7 +146,7 @@ class Predictor(BasePredictor):
             # More careful replacement that preserves indentation
             # Look for the original torch.hub.load_state_dict_from_url call and replace it entirely
             original_pattern = r'model_state_dict = torch\.hub\.load_state_dict_from_url\([^)]+\)'
-            new_code = f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
+            new_code = f'model_state_dict = torch.load("{model_path}")'
             
             if re.search(original_pattern, content):
                 content = re.sub(original_pattern, new_code, content)
@@ -161,7 +161,7 @@ class Predictor(BasePredictor):
                         # Get the indentation from the original line
                         indent = len(line) - len(line.lstrip())
                         # Replace with properly indented code
-                        lines[i] = ' ' * indent + f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
+                        lines[i] = ' ' * indent + f'model_state_dict = torch.load("{model_path}")'
                         break
                 
                 content = '\n'.join(lines)
