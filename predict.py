@@ -520,3 +520,110 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         else:
             print("⚠️ SPIGA framework file not found")
 
+
+    def fix_spiga_model_loading(self):
+        """Fix SPIGA model loading by downloading the model file and patching SPIGA"""
+        print("🔧 Fixing SPIGA model loading...")
+        
+        # Create SPIGA models directory
+        spiga_models_dir = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights"
+        os.makedirs(spiga_models_dir, exist_ok=True)
+        
+        # Check if model exists in the correct location
+        model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
+        
+        if not os.path.exists(model_path):
+            print("📥 Downloading SPIGA model...")
+            
+            # Try multiple reliable sources
+            urls = [
+                "https://huggingface.co/spiga/spiga_300wpublic/resolve/main/spiga_300wpublic.pt",
+                "https://github.com/aitorzip/SPIGA/releases/download/v1.0/spiga_300wpublic.pt"
+            ]
+            
+            for i, url in enumerate(urls):
+                try:
+                    print(f"🔄 Trying URL {i+1}: {url}")
+                    
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                    
+                    response = requests.get(url, headers=headers, stream=True)
+                    response.raise_for_status()
+                    
+                    with open(model_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    
+                    # Verify it's a valid PyTorch file
+                    with open(model_path, 'rb') as f:
+                        first_bytes = f.read(10)
+                        if first_bytes.startswith(b'<!DOCTYPE') or first_bytes.startswith(b'<html'):
+                            print(f"❌ URL {i+1} returned HTML, trying next...")
+                            os.remove(model_path)
+                            continue
+                    
+                    print("✅ SPIGA model downloaded successfully!")
+                    break
+                    
+                except Exception as e:
+                    print(f"❌ Failed with URL {i+1}: {e}")
+                    if os.path.exists(model_path):
+                        os.remove(model_path)
+                    continue
+            else:
+                print("⚠️ All download attempts failed")
+                return
+        else:
+            print("✅ SPIGA model already exists")
+        
+        # Patch SPIGA to use our local model file
+        print("🔧 Patching SPIGA to use local model...")
+        spiga_framework_path = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py"
+        
+        if os.path.exists(spiga_framework_path):
+            try:
+                with open(spiga_framework_path, 'r') as f:
+                    content = f.read()
+                
+                # Replace the torch.hub.load_state_dict_from_url call
+                old_code = 'model_state_dict = torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,'
+                new_code = f'''# Use local model file instead of downloading
+                model_state_dict = torch.load("{model_path}", map_location="cpu")'''
+                
+                if old_code in content:
+                    content = content.replace(old_code, new_code)
+                    
+                    with open(spiga_framework_path, 'w') as f:
+                        f.write(content)
+                    
+                    print("✅ SPIGA patched successfully!")
+                else:
+                    print("⚠️ Could not find the exact code to patch in SPIGA")
+                    print("🔍 Looking for alternative patterns...")
+                    
+                    # Try alternative patterns
+                    patterns = [
+                        'model_state_dict = torch.hub.load_state_dict_from_url(',
+                        'torch.hub.load_state_dict_from_url(',
+                        'load_state_dict_from_url('
+                    ]
+                    
+                    for pattern in patterns:
+                        if pattern in content:
+                            print(f"Found pattern: {pattern}")
+                            # Replace with our local file
+                            content = content.replace(pattern, f'torch.load("{model_path}", map_location="cpu")')
+                            with open(spiga_framework_path, 'w') as f:
+                                f.write(content)
+                            print("✅ SPIGA patched with alternative pattern!")
+                            return
+                    
+                    print("❌ No matching patterns found in SPIGA framework")
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to patch SPIGA: {e}")
+        else:
+            print("⚠️ SPIGA framework file not found")
+
