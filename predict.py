@@ -144,11 +144,12 @@ class Predictor(BasePredictor):
                 content = f.read()
             
             # More careful replacement that preserves indentation
-            old_pattern = r'model_state_dict = torch\.hub\.load_state_dict_from_url\(self\.model_cfg\.model_weights_url,.*?\)'
+            # Look for the original torch.hub.load_state_dict_from_url call and replace it entirely
+            original_pattern = r'model_state_dict = torch\.hub\.load_state_dict_from_url\([^)]+\)'
             new_code = f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
             
-            if re.search(old_pattern, content, re.DOTALL):
-                content = re.sub(old_pattern, new_code, content, flags=re.DOTALL)
+            if re.search(original_pattern, content):
+                content = re.sub(original_pattern, new_code, content)
                 with open(framework_path, "w") as f:
                     f.write(content)
                 print("✅ Patched SPIGA framework.py to use local model file!")
@@ -156,7 +157,7 @@ class Predictor(BasePredictor):
                 # Fallback: look for the simpler pattern and replace more carefully
                 lines = content.split('\n')
                 for i, line in enumerate(lines):
-                    if 'torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,' in line:
+                    if 'torch.hub.load_state_dict_from_url(' in line:
                         # Get the indentation from the original line
                         indent = len(line) - len(line.lstrip())
                         # Replace with properly indented code
