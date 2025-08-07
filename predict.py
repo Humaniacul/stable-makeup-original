@@ -137,23 +137,36 @@ class Predictor(BasePredictor):
                 print("⚠️ All download attempts failed")
                 raise Exception("Failed to download SPIGA model from all sources.")
 
-        # Patch SPIGA framework.py to use local file
+        # Patch SPIGA framework.py to use local file - IMPROVED WITH PROPER INDENTATION
         framework_path = os.path.join(os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py"))
         if os.path.exists(framework_path):
             with open(framework_path, "r") as f:
                 content = f.read()
             
-            # Replace the torch.hub.load_state_dict_from_url call
-            old_code = 'model_state_dict = torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,'
+            # More careful replacement that preserves indentation
+            old_pattern = r'model_state_dict = torch\.hub\.load_state_dict_from_url\(self\.model_cfg\.model_weights_url,.*?\)'
             new_code = f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
             
-            if old_code in content:
-                content = content.replace(old_code, new_code)
+            if re.search(old_pattern, content, re.DOTALL):
+                content = re.sub(old_pattern, new_code, content, flags=re.DOTALL)
                 with open(framework_path, "w") as f:
                     f.write(content)
                 print("✅ Patched SPIGA framework.py to use local model file!")
             else:
-                print("⚠️ SPIGA framework.py already patched or pattern not found.")
+                # Fallback: look for the simpler pattern and replace more carefully
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if 'torch.hub.load_state_dict_from_url(self.model_cfg.model_weights_url,' in line:
+                        # Get the indentation from the original line
+                        indent = len(line) - len(line.lstrip())
+                        # Replace with properly indented code
+                        lines[i] = ' ' * indent + f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
+                        break
+                
+                content = '\n'.join(lines)
+                with open(framework_path, "w") as f:
+                    f.write(content)
+                print("✅ Patched SPIGA framework.py with proper indentation!")
         else:
             print("⚠️ SPIGA framework file not found")
 
