@@ -101,6 +101,8 @@ class Predictor(BasePredictor):
                 with open(diffusers_init_path, "r") as f:
                     content = f.read()
                 
+                print(f"📄 Current diffusers __init__.py content (first 500 chars): {content[:500]}")
+                
                 # Remove problematic imports
                 problematic_imports = [
                     "USE_PEFT_BACKEND",
@@ -114,13 +116,38 @@ class Predictor(BasePredictor):
                     if f"from .peft_utils import {import_name}" in content:
                         content = content.replace(f"from .peft_utils import {import_name}\n", "")
                         modified = True
+                        print(f"✅ Removed import: {import_name}")
+                    
                     # Remove from __all__ list
                     if f'"{import_name}",' in content:
                         content = content.replace(f'"{import_name}",', "")
                         modified = True
+                        print(f"✅ Removed from __all__: {import_name}")
                     if f"'{import_name}'," in content:
                         content = content.replace(f"'{import_name}',", "")
                         modified = True
+                        print(f"✅ Removed from __all__: {import_name}")
+                
+                # Also check peft_utils.py file
+                peft_utils_path = "/root/.pyenv/versions/3.10.18/lib/python3.10/site-packages/diffusers/utils/peft_utils.py"
+                if os.path.exists(peft_utils_path):
+                    with open(peft_utils_path, "r") as f:
+                        peft_content = f.read()
+                    
+                    # Add dummy definitions for missing functions
+                    if "USE_PEFT_BACKEND" not in peft_content:
+                        peft_content += '''
+
+# Dummy definitions for compatibility
+USE_PEFT_BACKEND = False
+def scale_lora_layers(*args, **kwargs):
+    pass
+def unscale_lora_layers(*args, **kwargs):
+    pass
+'''
+                        with open(peft_utils_path, "w") as f:
+                            f.write(peft_content)
+                        print("✅ Added dummy definitions to peft_utils.py")
                 
                 if modified:
                     with open(diffusers_init_path, "w") as f:
