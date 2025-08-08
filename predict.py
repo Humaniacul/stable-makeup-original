@@ -91,51 +91,49 @@ class Predictor(BasePredictor):
         os.makedirs(spiga_models_dir, exist_ok=True)
         model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
 
-        if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
-            print("✅ SPIGA model found locally!")
+        # Treat a valid model as > 200MB to avoid pointer/HTML files
+        min_valid_size_bytes = 200 * 1024 * 1024
+
+        if os.path.exists(model_path) and os.path.getsize(model_path) > min_valid_size_bytes:
+            print("✅ SPIGA model found in site-packages cache!")
         else:
-            print("📥 Downloading SPIGA model from HuggingFace...")
-            urls = [
-                "https://huggingface.co/Stkzzzz222/fragments_V2/resolve/main/spxxz.pt",
-                "https://github.com/andresprados/SPIGA/releases/download/v1.0.0/spiga_300wpublic.pt"
-            ]
-            downloaded = False
-            for i, url in enumerate(urls):
-                print(f"🔄 Trying URL {i+1}: {url}")
+            # 1) Try to copy from repository root if present (useful for local dev)
+            try:
+                import shutil
+                repo_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
+                local_candidates = [
+                    os.path.join(repo_root, "spiga_300wpublic.pt"),
+                    os.path.join(repo_root, "models", "spiga_300wpublic.pt"),
+                ]
+                for candidate in local_candidates:
+                    if os.path.exists(candidate) and os.path.getsize(candidate) > min_valid_size_bytes:
+                        print(f"📁 Found local SPIGA weights at {candidate}, copying to cache...")
+                        shutil.copy2(candidate, model_path)
+                        break
+            except Exception as e:
+                print(f"⚠️ Local copy attempt failed: {e}")
+
+            # 2) If still missing or too small, download via Google Drive using gdown
+            if not (os.path.exists(model_path) and os.path.getsize(model_path) > min_valid_size_bytes):
+                print("📥 Downloading SPIGA model via Google Drive (gdown)...")
+                drive_file_id = "1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                    response = requests.get(url, headers=headers, stream=True, timeout=30)
-                    response.raise_for_status()
-                    
-                    total_size = int(response.headers.get('content-length', 0))
-                    block_size = 8192
-                    downloaded_size = 0
-                    
-                    with open(model_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=block_size):
-                            f.write(chunk)
-                            downloaded_size += len(chunk)
-                            if total_size > 0:
-                                progress = (downloaded_size / total_size) * 100
-                                sys.stdout.write(f"\rDownloading: {progress:.2f}%")
-                                sys.stdout.flush()
-                    sys.stdout.write("\n")
-                    
-                    # Verify downloaded file is not HTML
-                    with open(model_path, 'rb') as f:
-                        first_bytes = f.read(100)
-                    if b'<!DOCTYPE html>' in first_bytes or b'<html' in first_bytes:
-                        raise ValueError("Downloaded file is HTML, not a model file.")
-                    
-                    print(f"✅ SPIGA model downloaded successfully from URL {i+1}!")
-                    downloaded = True
-                    break
+                    try:
+                        import gdown  # type: ignore
+                    except Exception:
+                        # Fallback: install gdown at runtime if not present
+                        print("⬇️ Installing gdown at runtime...")
+                        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gdown==5.1.0"], check=True)
+                        import gdown  # type: ignore
+
+                    url = f"https://drive.google.com/uc?id={drive_file_id}"
+                    gdown.download(url=url, output=model_path, quiet=False, fuzzy=True)
+
+                    if not os.path.exists(model_path) or os.path.getsize(model_path) <= min_valid_size_bytes:
+                        raise RuntimeError("Downloaded SPIGA file is too small or missing after gdown.")
+                    print("✅ SPIGA model downloaded successfully via gdown!")
                 except Exception as e:
-                    print(f"❌ Failed with URL {i+1}: {e}")
-            
-            if not downloaded:
-                print("⚠️ All download attempts failed")
-                raise Exception("Failed to download SPIGA model from all sources.")
+                    raise Exception(f"Failed to obtain SPIGA weights via gdown: {e}")
 
         # Patch SPIGA framework.py to use local file - IMPROVED WITH PROPER INDENTATION
         framework_path = os.path.join(os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py"))
