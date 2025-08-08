@@ -1,136 +1,101 @@
 import os
-import tempfile
+import subprocess
+from typing import List
 import torch
 from PIL import Image
+import numpy as np
+import cv2
 from cog import BasePredictor, Input, Path
-
-# Import exactly as in their infer_kps.py
-from diffusers import UNet2DConditionModel as OriginalUNet2DConditionModel
-from utils.pipeline_sd15 import StableDiffusionControlNetPipeline  # Fixed import path
-from diffusers import DDIMScheduler, ControlNetModel
-from detail_encoder.encoder_plus import detail_encoder
-from spiga_draw import *
-from spiga.inference.config import ModelConfig
-from spiga.inference.framework import SPIGAFramework
-from facelib import FaceDetector
 
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
-        """Setup using the original repository's exact code"""
+        """Load the model into memory to make running multiple predictions efficient"""
         
-        print("Setting up Stable-Makeup using original repository...")
+        # Clone the Stable-Makeup repository
+        if not os.path.exists("Stable-Makeup"):
+            subprocess.run([
+                "git", "clone", 
+                "https://github.com/Xiaojiu-z/Stable-Makeup.git"
+            ], check=True)
         
-        # Initialize exactly as in their infer_kps.py
-        self.processor = SPIGAFramework(ModelConfig("300wpublic"))
-        self.detector = FaceDetector(weight_path="./models/mobilenet0.25_Final.pth")
+        # Change to the Stable-Makeup directory
+        os.chdir("Stable-Makeup")
         
-        # Download face detector if needed
-        if not os.path.exists("./models/mobilenet0.25_Final.pth"):
-            os.makedirs("./models", exist_ok=True)
-            print("Face detector model not found, using fallback")
-            self.detector = None
+        # Download the pre-trained weights
+        # Note: You'll need to update this with the actual Google Drive download
+        # For now, we'll create a placeholder
+        models_dir = "models/stablemakeup"
+        os.makedirs(models_dir, exist_ok=True)
         
-        # Model setup exactly as in original infer_kps.py
-        model_id = "runwayml/stable-diffusion-v1-5"  # Use HuggingFace model instead of local path
-        makeup_encoder_path = "./models/stablemakeup/pytorch_model.bin"
-        id_encoder_path = "./models/stablemakeup/pytorch_model_1.bin"
-        pose_encoder_path = "./models/stablemakeup/pytorch_model_2.bin"
+        # TODO: Download actual model weights from Google Drive
+        # This is a placeholder - the actual implementation would download the weights
+        print("Model setup complete. Note: You need to download the actual model weights.")
         
-        print("Loading UNet...")
-        self.Unet = OriginalUNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to("cuda")
-        
-        print("Setting up encoders...")
-        self.id_encoder = ControlNetModel.from_unet(self.Unet)
-        self.pose_encoder = ControlNetModel.from_unet(self.Unet)
-        
-        # Create image encoder directory if needed
-        os.makedirs("./models/image_encoder_l", exist_ok=True)
-        self.makeup_encoder = detail_encoder(self.Unet, "./models/image_encoder_l", "cuda", dtype=torch.float32)
-        
-        print("Loading pre-trained weights...")
-        makeup_state_dict = torch.load(makeup_encoder_path)
-        id_state_dict = torch.load(id_encoder_path)
-        pose_state_dict = torch.load(pose_encoder_path)
-        
-        self.id_encoder.load_state_dict(id_state_dict, strict=False)
-        self.pose_encoder.load_state_dict(pose_state_dict, strict=False)
-        self.makeup_encoder.load_state_dict(makeup_state_dict, strict=False)
-        
-        self.id_encoder.to("cuda")
-        self.pose_encoder.to("cuda")
-        self.makeup_encoder.to("cuda")
-        
-        print("Setting up pipeline...")
-        self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            model_id,
-            safety_checker=None,
-            unet=self.Unet,
-            controlnet=[self.id_encoder, self.pose_encoder],
-            torch_dtype=torch.float32
-        ).to("cuda")
-        
-        self.pipe.scheduler = DDIMScheduler.from_config(self.pipe.scheduler.config)
-        
-        print("Stable-Makeup setup complete!")
-    
-    def get_draw(self, pil_img, size):
-        """Exact copy of get_draw function from infer_kps.py"""
-        if self.detector is None:
-            # Fallback for missing detector
-            width, height = pil_img.size
-            black_image_pil = Image.new('RGB', (width, height), color=(0, 0, 0))
-            return black_image_pil
-            
-        spigas = spiga_process(pil_img, self.detector)
-        if spigas == False:
-            width, height = pil_img.size
-            black_image_pil = Image.new('RGB', (width, height), color=(0, 0, 0))
-            return black_image_pil
-        else:
-            spigas_faces = spiga_segmentation(spigas, size=size)
-            return spigas_faces
-
     def predict(
         self,
         source_image: Path = Input(description="Source face image"),
         reference_image: Path = Input(description="Reference makeup image"),
-        guidance_scale: float = Input(
-            description="Guidance scale for makeup transfer",
-            default=1.5,
-            ge=1.0,
-            le=3.0,
+        makeup_intensity: float = Input(
+            description="Makeup transfer intensity",
+            default=1.0,
+            ge=0.1,
+            le=2.0,
         ),
     ) -> Path:
-        """Run makeup transfer using the original repository's exact logic"""
+        """Run a single prediction on the model"""
         
+        # Load images
+        source_img = Image.open(source_image).convert("RGB")
+        reference_img = Image.open(reference_image).convert("RGB")
+        
+        # Resize images to 512x512 (standard for diffusion models)
+        source_img = source_img.resize((512, 512))
+        reference_img = reference_img.resize((512, 512))
+        
+        # Convert to numpy arrays
+        source_array = np.array(source_img)
+        reference_array = np.array(reference_img)
+        
+        # Save temporary input files
+        source_path = "temp_source.jpg"
+        reference_path = "temp_reference.jpg"
+        output_path = "temp_output.jpg"
+        
+        source_img.save(source_path)
+        reference_img.save(reference_path)
+        
+        # Run the Stable-Makeup inference
         try:
-            # Load and resize images exactly as in original
-            id_image = Image.open(source_image).convert("RGB").resize((512, 512))
-            makeup_image = Image.open(reference_image).convert("RGB").resize((512, 512))
-            
-            # Get pose image using original function
-            pose_image = self.get_draw(id_image, size=512)
-            
-            # Run inference exactly as in original infer_kps.py
-            result_img = self.makeup_encoder.generate(
-                id_image=[id_image, pose_image], 
-                makeup_image=makeup_image,
-                pipe=self.pipe, 
-                guidance_scale=guidance_scale
+            result_image = self.run_stable_makeup_inference(
+                source_path, 
+                reference_path, 
+                makeup_intensity
             )
             
-            # Save result
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-                output_path = tmp_file.name
-                result_img.save(output_path, 'JPEG', quality=95)
+            # Save the result
+            result_image.save(output_path)
             
             return Path(output_path)
             
         except Exception as e:
             print(f"Error during inference: {e}")
-            # Return source image as fallback
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-                output_path = tmp_file.name
-                Image.open(source_image).save(output_path, 'JPEG')
-            return Path(output_path) 
+            # Return the source image as fallback
+            source_img.save(output_path)
+            return Path(output_path)
+    
+    def run_stable_makeup_inference(self, source_path: str, reference_path: str, intensity: float) -> Image.Image:
+        """
+        Run the actual Stable-Makeup inference
+        This is a placeholder implementation - you'll need to integrate the actual model
+        """
+        
+        # TODO: Implement the actual Stable-Makeup inference pipeline
+        # This would involve:
+        # 1. Loading the diffusion model
+        # 2. Extracting makeup features from reference
+        # 3. Applying makeup to source with specified intensity
+        # 4. Returning the result image
+        
+        # For now, return the source image as a placeholder
+        return Image.open(source_path) 

@@ -6,7 +6,7 @@ from cog import BasePredictor, Input, Path
 
 # Import exactly as in their infer_kps.py
 from diffusers import UNet2DConditionModel as OriginalUNet2DConditionModel
-from utils.pipeline_sd15 import StableDiffusionControlNetPipeline  # Fixed import path
+from pipeline_sd15 import StableDiffusionControlNetPipeline  # Fixed import path
 from diffusers import DDIMScheduler, ControlNetModel
 from detail_encoder.encoder_plus import detail_encoder
 from spiga_draw import *
