@@ -178,6 +178,10 @@ class Predictor(BasePredictor):
         
         print("🔧 Fixing syntax errors...")
         self.fix_syntax_errors()
+
+        # Ensure we use a valid Stable Diffusion v1-5 model identifier
+        print("🔧 Normalizing model identifiers...")
+        self.fix_model_identifiers()
         
         print("🔧 Fixing pipeline_sd15.py imports completely...")
         self.fix_pipeline_sd15_file()
@@ -354,6 +358,34 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                     except Exception as e:
                         continue
         print("✅ Syntax errors fixed!")
+
+    def fix_model_identifiers(self):
+        """Replace invalid model repo ids with correct public identifiers."""
+        replacements = [
+            # Replace bogus placeholder with the official public repo id
+            (r'"sd_model_v1-5"', '"runwayml/stable-diffusion-v1-5"'),
+            (r"'sd_model_v1-5'", "'runwayml/stable-diffusion-v1-5'"),
+        ]
+
+        for root, dirs, files in os.walk("."):
+            for file in files:
+                if file.endswith(".py"):
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            content = f.read()
+
+                        original_content = content
+                        for pattern, replacement in replacements:
+                            content = re.sub(pattern, replacement, content)
+
+                        if content != original_content:
+                            with open(filepath, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            print(f"✅ Fixed model id in {filepath}")
+                    except Exception:
+                        continue
+        print("✅ Model identifiers normalized!")
 
     def add_infer_function(self):
         """Add the infer_with_params function to infer_kps.py"""
