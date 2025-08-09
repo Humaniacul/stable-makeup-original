@@ -47,6 +47,9 @@ class Predictor(BasePredictor):
             
             # Fix all compatibility issues BEFORE any imports
             self.fix_all_issues()
+
+            # Normalize detail_encoder constructor at runtime to avoid duplicate args
+            self.monkey_patch_detail_encoder_init()
             
             # Save input images
             source_path = "test_imgs/id/source.jpg"
@@ -443,6 +446,41 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                 except Exception:
                     continue
         print("✅ detail_encoder calls harmonized!")
+
+    def monkey_patch_detail_encoder_init(self):
+        """Wrap detail_encoder.__init__ to accept both positional device and keyword device/dtype
+        without raising multiple values errors.
+        """
+        try:
+            sys.path.append(os.getcwd())
+            from detail_encoder.encoder_plus import detail_encoder as _DetailEncoder
+        except Exception:
+            # If import fails (e.g., before repo cloned), just skip
+            return
+
+        original_init = _DetailEncoder.__init__
+
+        def safe_init(self_obj, unet, image_encoder_path, *args, **kwargs):
+            device_kw = kwargs.pop("device", None)
+            dtype_kw = kwargs.pop("dtype", None)
+
+            positional_device = None
+            positional_dtype = None
+            if len(args) >= 1:
+                positional_device = args[0]
+            if len(args) >= 2:
+                positional_dtype = args[1]
+
+            # Resolve device
+            device = device_kw if device_kw is not None else positional_device
+            # Resolve dtype
+            dtype = dtype_kw if dtype_kw is not None else positional_dtype
+
+            # Rebuild args cleanly with only required positionals
+            return original_init(self_obj, unet, image_encoder_path, device=device, dtype=dtype)
+
+        _DetailEncoder.__init__ = safe_init
+        print("✅ detail_encoder.__init__ monkey patched for argument normalization")
 
     def fix_infer_kps_detail_encoder(self):
         """Directly patch Stable-Makeup/infer_kps.py for detail_encoder call.
