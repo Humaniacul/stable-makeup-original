@@ -482,8 +482,8 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             if dtype is None:
                 dtype = torch.float32
 
-            # Rebuild args cleanly with only required positionals
-            return original_init(self_obj, unet, image_encoder_path, device=device, dtype=dtype)
+            # Rebuild args cleanly with only required positionals to avoid any kwarg duplication
+            return original_init(self_obj, unet, image_encoder_path, device, dtype)
 
         _DetailEncoder.__init__ = safe_init
         print("✅ detail_encoder.__init__ monkey patched for argument normalization")
