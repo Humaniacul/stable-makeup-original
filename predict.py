@@ -476,6 +476,12 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             # Resolve dtype
             dtype = dtype_kw if dtype_kw is not None else positional_dtype
 
+            # Fallbacks to original defaults if not provided
+            if device is None:
+                device = "cuda"
+            if dtype is None:
+                dtype = torch.float32
+
             # Rebuild args cleanly with only required positionals
             return original_init(self_obj, unet, image_encoder_path, device=device, dtype=dtype)
 
