@@ -482,8 +482,8 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             if dtype is None:
                 dtype = torch.float32
 
-            # Rebuild args cleanly with only required positionals to avoid any kwarg duplication
-            return original_init(self_obj, unet, image_encoder_path, device, dtype)
+            # Call original with keyword args to avoid positional count ambiguity
+            return original_init(self_obj, unet, image_encoder_path, device=device, dtype=dtype)
 
         _DetailEncoder.__init__ = safe_init
         print("✅ detail_encoder.__init__ monkey patched for argument normalization")
@@ -577,7 +577,48 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
     def copy_model_weights(self, models_dir: str):
         """Copy pre-trained model weights to the expected location"""
         print("📋 Setting up model weights...")
-        
-        # Model weights will be downloaded automatically by diffusers
-        # when the pipeline is first created
+        os.makedirs(models_dir, exist_ok=True)
+        # Ensure stablemakeup adapter weights exist by copying from local repo if present
+        repo_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
+        local_stablemakeup = os.path.join(repo_root, "stable-makeup-fresh", "models", "stablemakeup")
+        if os.path.isdir(local_stablemakeup):
+            for fname in [
+                "pytorch_model.bin",
+                "pytorch_model_1.bin",
+                "pytorch_model_2.bin",
+            ]:
+                src = os.path.join(local_stablemakeup, fname)
+                dst = os.path.join(models_dir, fname)
+                try:
+                    if os.path.exists(src) and not os.path.exists(dst):
+                        import shutil
+                        shutil.copy2(src, dst)
+                        print(f"✅ Copied {fname} into {models_dir}")
+                except Exception as e:
+                    print(f"⚠️ Could not copy {fname}: {e}")
+
+        # Ensure CLIP Vision image encoder exists (for detail_encoder)
+        image_encoder_dir = os.path.join("models", "image_encoder_l")
+        os.makedirs(image_encoder_dir, exist_ok=True)
+        # If config is missing, fetch from HuggingFace
+        try:
+            needed = [
+                ("config.json", "openai/clip-vit-large-patch14"),
+                ("preprocessor_config.json", "openai/clip-vit-large-patch14"),
+                ("pytorch_model.bin", "openai/clip-vit-large-patch14"),
+            ]
+            for filename, repo_id in needed:
+                path = os.path.join(image_encoder_dir, filename)
+                if not os.path.exists(path):
+                    print(f"⬇️ Downloading {filename} for image_encoder_l from {repo_id}...")
+                    try:
+                        from huggingface_hub import hf_hub_download
+                        downloaded = hf_hub_download(repo_id=repo_id, filename=filename, local_dir=image_encoder_dir, local_dir_use_symlinks=False)
+                        print(f"✅ Downloaded {filename} → {downloaded}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to download {filename} from {repo_id}: {e}")
+
+        except Exception as e:
+            print(f"⚠️ Image encoder setup issue: {e}")
+
         print("✅ Model weights setup complete!")
