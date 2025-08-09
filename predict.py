@@ -182,6 +182,10 @@ class Predictor(BasePredictor):
         # Ensure we use a valid Stable Diffusion v1-5 model identifier
         print("🔧 Normalizing model identifiers...")
         self.fix_model_identifiers()
+
+        # Fix detail_encoder constructor call arguments to avoid duplicate dtype
+        print("🔧 Harmonizing detail_encoder constructor calls...")
+        self.fix_detail_encoder_calls()
         
         print("🔧 Fixing pipeline_sd15.py imports completely...")
         self.fix_pipeline_sd15_file()
@@ -386,6 +390,56 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                     except Exception:
                         continue
         print("✅ Model identifiers normalized!")
+
+    def fix_detail_encoder_calls(self):
+        """Avoid passing dtype twice to detail_encoder by removing ambiguous positional args.
+        Converts calls like:
+            detail_encoder(Unet, "./models/image_encoder_l", "cuda", dtype=torch.float32)
+        into:
+            detail_encoder(Unet, "./models/image_encoder_l", device="cuda", dtype=torch.float32)
+        and handles minor quoting/spacing variations.
+        """
+        patterns = [
+            # double quotes
+            (r'detail_encoder\(\s*Unet\s*,\s*"\./models/image_encoder_l"\s*,\s*"(cuda|cpu)"\s*,\s*dtype\s*=\s*torch\.float32\s*\)',
+             r'detail_encoder(Unet, "./models/image_encoder_l", device="\\1", dtype=torch.float32)'),
+            # single quotes
+            (r"detail_encoder\(\s*Unet\s*,\s*'\./models/image_encoder_l'\s*,\s*'(cuda|cpu)'\s*,\s*dtype\s*=\s*torch\.float32\s*\)",
+             r"detail_encoder(Unet, './models/image_encoder_l', device='\\1', dtype=torch.float32)"),
+        ]
+
+        for root, dirs, files in os.walk('.'):
+            for file in files:
+                if not file.endswith('.py'):
+                    continue
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+
+                    original_content = content
+                    for pattern, replacement in patterns:
+                        content = re.sub(pattern, replacement, content)
+
+                    # Also, if dtype is passed positionally before a keyword, remove the keyword to avoid duplicate
+                    # e.g., detail_encoder(Unet, path, some_dtype, device=..., dtype=some_dtype)
+                    content = re.sub(
+                        r'detail_encoder\(([^\)]*?),\s*dtype\s*=\s*([^,\)]+)([^\)]*?)\)',
+                        lambda m: (
+                            'detail_encoder(' + m.group(1) + m.group(3) + ')'
+                            if re.search(r'(^|,)\s*torch\.(float16|float32|float64)\s*(,|$)', m.group(1)) else m.group(0)
+                        ),
+                        content,
+                        flags=re.DOTALL,
+                    )
+
+                    if content != original_content:
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                        print(f"✅ Fixed detail_encoder call in {filepath}")
+                except Exception:
+                    continue
+        print("✅ detail_encoder calls harmonized!")
 
     def add_infer_function(self):
         """Add the infer_with_params function to infer_kps.py"""
