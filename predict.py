@@ -405,10 +405,10 @@ def unscale_lora_layers(*args, **kwargs): pass'''
         patterns = [
             # double quotes
             (r'detail_encoder\(\s*Unet\s*,\s*"\./models/image_encoder_l"\s*,\s*"(cuda|cpu)"\s*,\s*dtype\s*=\s*torch\.float32\s*\)',
-             r'detail_encoder(Unet, "./models/image_encoder_l", device="\\1", dtype=torch.float32)'),
+             r'detail_encoder(Unet, "./models/image_encoder_l", device="\g<1>", dtype=torch.float32)'),
             # single quotes
             (r"detail_encoder\(\s*Unet\s*,\s*'\./models/image_encoder_l'\s*,\s*'(cuda|cpu)'\s*,\s*dtype\s*=\s*torch\.float32\s*\)",
-             r"detail_encoder(Unet, './models/image_encoder_l', device='\\1', dtype=torch.float32)"),
+             r"detail_encoder(Unet, './models/image_encoder_l', device='\g<1>', dtype=torch.float32)"),
         ]
 
         for root, dirs, files in os.walk('.'):
@@ -460,7 +460,14 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             # Generalize for image_encoder_* and any torch dtype
             content = re.sub(
                 r'detail_encoder\(\s*Unet\s*,\s*([\"\']\./models/image_encoder_[^\"\']+[\"\'])\s*,\s*([\"\'](?:cuda|cpu)[\"\'])\s*,\s*dtype\s*=\s*(torch\.[a-zA-Z0-9_]+)\s*\)',
-                r'detail_encoder(Unet, \1, device=\2, dtype=\3)',
+                r'detail_encoder(Unet, \g<1>, device=\g<2>, dtype=\g<3>)',
+                content,
+            )
+
+            # Ensure any remaining positional device becomes keyword arg
+            content = re.sub(
+                r'detail_encoder\(\s*Unet\s*,\s*([\"\']\./models/image_encoder_[^\"\']+[\"\'])\s*,\s*([\"\'](?:cuda|cpu)[\"\'])\s*\)',
+                r'detail_encoder(Unet, \1, device=\2)',
                 content,
             )
 
