@@ -186,6 +186,9 @@ class Predictor(BasePredictor):
         # Fix detail_encoder constructor call arguments to avoid duplicate dtype
         print("🔧 Harmonizing detail_encoder constructor calls...")
         self.fix_detail_encoder_calls()
+        # Targeted fix for infer_kps.py to ensure device is named and dtype not duplicated
+        print("🔧 Patching infer_kps.py detail_encoder calls...")
+        self.fix_infer_kps_detail_encoder()
         
         print("🔧 Fixing pipeline_sd15.py imports completely...")
         self.fix_pipeline_sd15_file()
@@ -440,6 +443,35 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                 except Exception:
                     continue
         print("✅ detail_encoder calls harmonized!")
+
+    def fix_infer_kps_detail_encoder(self):
+        """Directly patch Stable-Makeup/infer_kps.py for detail_encoder call.
+        Ensures device is passed by name and dtype appears only once.
+        """
+        infer_file = os.path.join(".", "infer_kps.py")
+        if not os.path.exists(infer_file):
+            print("⚠️ infer_kps.py not found; skipping targeted patch")
+            return
+        try:
+            with open(infer_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            original_content = content
+            # Generalize for image_encoder_* and any torch dtype
+            content = re.sub(
+                r'detail_encoder\(\s*Unet\s*,\s*([\"\']\./models/image_encoder_[^\"\']+[\"\'])\s*,\s*([\"\'](?:cuda|cpu)[\"\'])\s*,\s*dtype\s*=\s*(torch\.[a-zA-Z0-9_]+)\s*\)',
+                r'detail_encoder(Unet, \1, device=\2, dtype=\3)',
+                content,
+            )
+
+            if content != original_content:
+                with open(infer_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                print(f"✅ Patched {infer_file}")
+            else:
+                print("ℹ️ No matching detail_encoder pattern found in infer_kps.py")
+        except Exception as e:
+            print(f"⚠️ Failed to patch infer_kps.py: {e}")
 
     def add_infer_function(self):
         """Add the infer_with_params function to infer_kps.py"""
