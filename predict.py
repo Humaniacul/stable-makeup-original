@@ -189,6 +189,9 @@ class Predictor(BasePredictor):
         # Fix detail_encoder constructor call arguments to avoid duplicate dtype
         print("🔧 Harmonizing detail_encoder constructor calls...")
         self.fix_detail_encoder_calls()
+        # Ensure encoder_plus.__init__ has a proper self parameter
+        print("🔧 Validating detail_encoder.__init__ signature...")
+        self.fix_detail_encoder_init_signature()
         # Targeted fix for infer_kps.py to ensure device is named and dtype not duplicated
         print("🔧 Patching infer_kps.py detail_encoder calls...")
         self.fix_infer_kps_detail_encoder()
@@ -200,6 +203,39 @@ class Predictor(BasePredictor):
         self.add_infer_function()
         
         print("✅ Fixed all issues in infer_kps.py")
+
+    def fix_detail_encoder_init_signature(self):
+        """Ensure detail_encoder.__init__ includes 'self' as the first parameter.
+        Some copies of the repo have a malformed signature: def __init__(unet, image_encoder_path, ...)
+        which leads to NameError: self is not defined.
+        """
+        target = os.path.join("detail_encoder", "encoder_plus.py")
+        if not os.path.exists(target):
+            return
+        try:
+            with open(target, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            original = content
+            # Only adjust the __init__ under class detail_encoder
+            # Add 'self' if the first parameter is not self
+            def add_self_param(match):
+                params = match.group(1)
+                # If already starts with self, keep as is
+                if re.match(r"\s*self\s*(,|\))", params):
+                    return match.group(0)
+                # Prepend self,
+                return match.group(0).replace("(" + params + ")", "(self, " + params.strip() + ")")
+
+            # Restrict to the first __init__ occurrence
+            content = re.sub(r"def\s+__init__\(([^)]*)\)", add_self_param, content, count=1)
+
+            if content != original:
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"✅ Patched {target} to include 'self' in __init__")
+        except Exception as e:
+            print(f"⚠️ Failed to validate detail_encoder.__init__ signature: {e}")
 
     def fix_pipeline_sd15_file(self):
         """Completely fix the pipeline_sd15.py file imports"""
