@@ -230,7 +230,7 @@ class Predictor(BasePredictor):
                     count=1,
                 )
 
-                # Inject a stable alias and normalize references inside the method body
+                # Inject super().__init__() at the top of the method body
                 # Find the method block start
                 start_idx = re.search(rf"{indent}def __init__\(", content).start()
                 # Find end of method by next def/class at same or lesser indentation
@@ -239,16 +239,16 @@ class Predictor(BasePredictor):
                 newline_idx = content.find("\n", body_start)
                 if newline_idx == -1:
                     newline_idx = body_start
-                injection = f"\n{indent}    super().__init__()\n{indent}    self._unet = unet\n"
+                injection = f"\n{indent}    super().__init__()\n"
                 content = content[:newline_idx+1] + injection + content[newline_idx+1:]
 
-                # Now replace usages of 'Unet.' and 'unet.' with 'self._unet.' only within __init__ body
+                # Now ensure we reference the local parameter 'unet' (not self._unet)
                 # Determine block end
                 next_def = re.search(rf"\n{indent}def |\n{indent}class ", content[body_start:])
                 block_end = body_start + (next_def.start() if next_def else len(content) - body_start)
                 method_body = content[body_start:block_end]
-                method_body = re.sub(r"\bUnet\.", "self._unet.", method_body)
-                method_body = re.sub(r"(?<!_)\bunet\.", "self._unet.", method_body)
+                # Revert any previous self._unet rewrites
+                method_body = re.sub(r"\bself\._unet\.", "unet.", method_body)
                 content = content[:body_start] + method_body + content[block_end:]
 
             if content != original:
@@ -541,18 +541,9 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                 call_kwargs["dtype"] = dtype
 
             try:
-                # Ensure _unet is available even before Module.__init__ runs
-                try:
-                    object.__setattr__(self_obj, "_unet", unet)
-                except Exception:
-                    pass
                 return original_init(self_obj, unet, image_encoder_path, **call_kwargs)
             except TypeError:
                 # Final fallback with only required positionals
-                try:
-                    object.__setattr__(self_obj, "_unet", unet)
-                except Exception:
-                    pass
                 return original_init(self_obj, unet, image_encoder_path)
 
         _DetailEncoder.__init__ = safe_init
