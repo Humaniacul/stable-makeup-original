@@ -239,7 +239,7 @@ class Predictor(BasePredictor):
                 newline_idx = content.find("\n", body_start)
                 if newline_idx == -1:
                     newline_idx = body_start
-                injection = f"\n{indent}    self._unet = unet\n"
+                injection = f"\n{indent}    super().__init__()\n{indent}    self._unet = unet\n"
                 content = content[:newline_idx+1] + injection + content[newline_idx+1:]
 
                 # Now replace usages of 'Unet.' and 'unet.' with 'self._unet.' only within __init__ body
