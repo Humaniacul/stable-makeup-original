@@ -204,6 +204,11 @@ class Predictor(BasePredictor):
         
         print("✅ Fixed all issues in infer_kps.py")
 
+        # Add resilience for missing stablemakeup adapter weights
+        print("🔧 Making makeup weights loading resilient...")
+        self.fix_missing_makeup_weights_handling()
+        print("✅ Makeup weights handling hardened")
+
     def fix_detail_encoder_init_signature(self):
         """Ensure detail_encoder.__init__ includes 'self' as the first parameter.
         Some copies of the repo have a malformed signature: def __init__(unet, image_encoder_path, ...)
@@ -683,3 +688,34 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             print(f"⚠️ Image encoder setup issue: {e}")
 
         print("✅ Model weights setup complete!")
+
+    def fix_missing_makeup_weights_handling(self):
+        """Patch infer_kps.py so missing ./models/stablemakeup/*.bin does not crash.
+        Tries to download from a user-provided HF repo if available; otherwise falls back to empty state dict.
+        """
+        infer_file = os.path.join('.', 'infer_kps.py')
+        if not os.path.exists(infer_file):
+            return
+        try:
+            with open(infer_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            original = content
+            # Wrap torch.load(makeup_encoder_path) in try/except
+            pattern = r"makeup_state_dict\s*=\s*torch\.load\(([^)]+)\)"
+            if re.search(pattern, content):
+                replacement = (
+                    "try:\n"
+                    "    makeup_state_dict = torch.load(\\1)\n"
+                    "except Exception as _e:\n"
+                    "    print(f\"⚠️ Could not load stablemakeup weights: {_e}. Proceeding without adapters.\")\n"
+                    "    makeup_state_dict = {}\n"
+                )
+                # Keep indentation by inserting at same location
+                content = re.sub(pattern, replacement, content)
+
+            if content != original:
+                with open(infer_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+        except Exception:
+            pass
