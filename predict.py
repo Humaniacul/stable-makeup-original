@@ -663,6 +663,39 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 except Exception as e:
                     print(f"⚠️ Could not copy {fname}: {e}")
 
+        # If still missing, download from GitHub repo (supports Git LFS via redirect)
+        missing = [
+            f for f in ["pytorch_model.bin", "pytorch_model_1.bin", "pytorch_model_2.bin"]
+            if not os.path.exists(os.path.join(models_dir, f))
+        ]
+        if missing:
+            gh_repo = os.environ.get("MAKEUP_WEIGHTS_REPO", "Humaniacul/stable-makeup-original")
+            gh_branch = os.environ.get("MAKEUP_WEIGHTS_BRANCH", "main")
+            base_raw = f"https://raw.githubusercontent.com/{gh_repo}/{gh_branch}/models/stablemakeup"
+            print(f"⬇️ Attempting to download adapter weights from GitHub repo {gh_repo}@{gh_branch}...")
+            for fname in missing:
+                url = f"{base_raw}/{fname}"
+                dst_path = os.path.join(models_dir, fname)
+                try:
+                    import requests
+                    with requests.get(url, stream=True, allow_redirects=True, timeout=60) as r:
+                        r.raise_for_status()
+                        with open(dst_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                                if chunk:
+                                    f.write(chunk)
+                    # Validate size (> 100MB)
+                    if os.path.getsize(dst_path) < 100 * 1024 * 1024:
+                        raise RuntimeError("downloaded file too small, likely a pointer")
+                    print(f"✅ Downloaded {fname} from GitHub")
+                except Exception as e:
+                    if os.path.exists(dst_path):
+                        try:
+                            os.remove(dst_path)
+                        except Exception:
+                            pass
+                    print(f"⚠️ Failed to download {fname} from {url}: {e}")
+
         # Ensure CLIP Vision image encoder exists (for detail_encoder)
         image_encoder_dir = os.path.join("models", "image_encoder_l")
         os.makedirs(image_encoder_dir, exist_ok=True)
