@@ -541,9 +541,18 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                 call_kwargs["dtype"] = dtype
 
             try:
+                # Ensure _unet is available even before Module.__init__ runs
+                try:
+                    object.__setattr__(self_obj, "_unet", unet)
+                except Exception:
+                    pass
                 return original_init(self_obj, unet, image_encoder_path, **call_kwargs)
             except TypeError:
                 # Final fallback with only required positionals
+                try:
+                    object.__setattr__(self_obj, "_unet", unet)
+                except Exception:
+                    pass
                 return original_init(self_obj, unet, image_encoder_path)
 
         _DetailEncoder.__init__ = safe_init
