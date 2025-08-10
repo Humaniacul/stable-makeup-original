@@ -217,18 +217,14 @@ class Predictor(BasePredictor):
                 content = f.read()
 
             original = content
-            # Only adjust the __init__ under class detail_encoder
-            # Add 'self' if the first parameter is not self
-            def add_self_param(match):
-                params = match.group(1)
-                # If already starts with self, keep as is
-                if re.match(r"\s*self\s*(,|\))", params):
-                    return match.group(0)
-                # Prepend self,
-                return match.group(0).replace("(" + params + ")", "(self, " + params.strip() + ")")
-
-            # Restrict to the first __init__ occurrence
-            content = re.sub(r"def\s+__init__\(([^)]*)\)", add_self_param, content, count=1)
+            # Force a canonical signature so the code body can reference 'unet'
+            content = re.sub(
+                r"^(\s*)def\s+__init__\([^)]*\):",
+                r"\1def __init__(self, unet, image_encoder_path, device=\"cuda\", dtype=torch.float32):",
+                content,
+                flags=re.M,
+                count=1,
+            )
 
             if content != original:
                 with open(target, "w", encoding="utf-8") as f:
