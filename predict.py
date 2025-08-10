@@ -218,18 +218,43 @@ class Predictor(BasePredictor):
 
             original = content
             # Force a canonical signature so the code body can reference 'unet'
-            content = re.sub(
-                r"^(\s*)def\s+__init__\([^)]*\):",
-                r"\1def __init__(self, unet, image_encoder_path, device=\"cuda\", dtype=torch.float32):",
-                content,
-                flags=re.M,
-                count=1,
-            )
+            sig_pattern = r"^(\s*)def\s+__init__\([^)]*\):"
+            match = re.search(sig_pattern, content, flags=re.M)
+            if match:
+                indent = match.group(1)
+                content = re.sub(
+                    sig_pattern,
+                    rf"{indent}def __init__(self, unet, image_encoder_path, device=\"cuda\", dtype=torch.float32):",
+                    content,
+                    flags=re.M,
+                    count=1,
+                )
+
+                # Inject a stable alias and normalize references inside the method body
+                # Find the method block start
+                start_idx = re.search(rf"{indent}def __init__\(", content).start()
+                # Find end of method by next def/class at same or lesser indentation
+                body_start = content.find(":", start_idx) + 1
+                # Insert a line after signature
+                newline_idx = content.find("\n", body_start)
+                if newline_idx == -1:
+                    newline_idx = body_start
+                injection = f"\n{indent}    self._unet = unet\n"
+                content = content[:newline_idx+1] + injection + content[newline_idx+1:]
+
+                # Now replace usages of 'Unet.' and 'unet.' with 'self._unet.' only within __init__ body
+                # Determine block end
+                next_def = re.search(rf"\n{indent}def |\n{indent}class ", content[body_start:])
+                block_end = body_start + (next_def.start() if next_def else len(content) - body_start)
+                method_body = content[body_start:block_end]
+                method_body = re.sub(r"\bUnet\.", "self._unet.", method_body)
+                method_body = re.sub(r"(?<!_)\bunet\.", "self._unet.", method_body)
+                content = content[:body_start] + method_body + content[block_end:]
 
             if content != original:
                 with open(target, "w", encoding="utf-8") as f:
                     f.write(content)
-                print(f"✅ Patched {target} to include 'self' in __init__")
+                print(f"✅ Patched {target} to normalize __init__ and UNet references")
         except Exception as e:
             print(f"⚠️ Failed to validate detail_encoder.__init__ signature: {e}")
 
