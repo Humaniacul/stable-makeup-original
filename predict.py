@@ -461,29 +461,33 @@ def unscale_lora_layers(*args, **kwargs): pass'''
         original_init = _DetailEncoder.__init__
 
         def safe_init(self_obj, unet, image_encoder_path, *args, **kwargs):
-            device_kw = kwargs.pop("device", None)
+            # Remove potentially conflicting device kw/positional entirely
+            _ = kwargs.pop("device", None)
             dtype_kw = kwargs.pop("dtype", None)
 
-            positional_device = None
+            # If dtype was passed positionally, capture it (ignore any positional device)
             positional_dtype = None
-            if len(args) >= 1:
-                positional_device = args[0]
             if len(args) >= 2:
                 positional_dtype = args[1]
 
-            # Resolve device
-            device = device_kw if device_kw is not None else positional_device
-            # Resolve dtype
             dtype = dtype_kw if dtype_kw is not None else positional_dtype
 
-            # Fallbacks to original defaults if not provided
-            if device is None:
-                device = "cuda"
-            if dtype is None:
-                dtype = torch.float32
+            # Only pass dtype if the original init accepts it
+            try:
+                import inspect
+                params = inspect.signature(original_init).parameters
+            except Exception:
+                params = {}
 
-            # Call original with keyword args to avoid positional count ambiguity
-            return original_init(self_obj, unet, image_encoder_path, device=device, dtype=dtype)
+            call_kwargs = {}
+            if "dtype" in params and dtype is not None:
+                call_kwargs["dtype"] = dtype
+
+            try:
+                return original_init(self_obj, unet, image_encoder_path, **call_kwargs)
+            except TypeError:
+                # Final fallback with only required positionals
+                return original_init(self_obj, unet, image_encoder_path)
 
         _DetailEncoder.__init__ = safe_init
         print("✅ detail_encoder.__init__ monkey patched for argument normalization")
