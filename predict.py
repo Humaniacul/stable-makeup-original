@@ -224,7 +224,7 @@ class Predictor(BasePredictor):
                 indent = match.group(1)
                 content = re.sub(
                     sig_pattern,
-                    rf"{indent}def __init__(self, unet, image_encoder_path, device=\"cuda\", dtype=torch.float32):",
+                    rf"{indent}def __init__(self, unet, image_encoder_path, device='cuda', dtype=torch.float32):",
                     content,
                     flags=re.M,
                     count=1,
