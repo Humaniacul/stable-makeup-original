@@ -599,34 +599,35 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             if "def infer_with_params" not in content:
                 function_code = '''
 def infer_with_params(source_path, reference_path, intensity=1.0):
-    """Custom function to run inference with specific parameters"""
-    import shutil
-    import os
-    
-    # Copy files to expected locations
+    """Minimal single-pair inference using globals built at import time."""
+    import os, shutil
+
     os.makedirs("test_imgs/id", exist_ok=True)
-    os.makedirs("test_imgs/makeup", exist_ok=True) 
+    os.makedirs("test_imgs/makeup", exist_ok=True)
     os.makedirs("output", exist_ok=True)
-    
-    shutil.copy(source_path, "test_imgs/id/")
-    shutil.copy(reference_path, "test_imgs/makeup/")
-    
-    # Get the base filename
-    source_name = os.path.basename(source_path)
-    reference_name = os.path.basename(reference_path)
-    
-    # Run the main inference function (adapted from original main())
-    try:
-        pipe = create_pipeline()
-        result = run_inference_single(pipe, source_name, reference_name, intensity)
-        return result
-    except Exception as e:
-        print(f"Error in inference: {e}")
-        from PIL import Image
-        import numpy as np
-        # Return a fallback image
-        fallback = np.zeros((512, 512, 3), dtype=np.uint8)
-        return Image.fromarray(fallback)
+
+    dst_id = os.path.join("test_imgs", "id", "input.jpg")
+    dst_mu = os.path.join("test_imgs", "makeup", "ref.jpg")
+
+    # Avoid SameFileError
+    if os.path.abspath(source_path) != os.path.abspath(dst_id):
+        shutil.copyfile(source_path, dst_id)
+    if os.path.abspath(reference_path) != os.path.abspath(dst_mu):
+        shutil.copyfile(reference_path, dst_mu)
+
+    id_image = load_image(dst_id).resize((512, 512))
+    makeup_image = load_image(dst_mu).resize((512, 512))
+    pose_image = get_draw(id_image, size=512)
+
+    # Use provided intensity to tweak guidance if desired
+    guidance = 1.6 * float(intensity)
+    result = makeup_encoder.generate(
+        id_image=[id_image, pose_image],
+        makeup_image=makeup_image,
+        pipe=pipe,
+        guidance_scale=guidance,
+    )
+    return result
 '''
                 content += function_code
                 
