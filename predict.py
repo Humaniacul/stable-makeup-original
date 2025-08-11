@@ -712,6 +712,39 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 if not success:
                     print(f"⚠️ All download attempts failed for {fname}. We'll proceed with graceful fallbacks.")
 
+        # Final fallback: try Google Drive folder from the original repo README
+        still_missing = [
+            f for f in ["pytorch_model.bin", "pytorch_model_1.bin", "pytorch_model_2.bin"]
+            if not os.path.exists(os.path.join(models_dir, f))
+        ]
+        if still_missing:
+            try:
+                print("📥 Attempting to fetch adapter weights from Google Drive via gdown...")
+                try:
+                    import gdown  # type: ignore
+                except Exception:
+                    print("⬇️ Installing gdown at runtime...")
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gdown==5.1.0"], check=True)
+                    import gdown  # type: ignore
+
+                folder_url = "https://drive.google.com/drive/folders/1397t27GrUyLPnj17qVpKWGwg93EcaFfg?usp=sharing"
+                tmp_dir = os.path.join(models_dir, "_gdown_tmp")
+                os.makedirs(tmp_dir, exist_ok=True)
+                gdown.download_folder(url=folder_url, output=tmp_dir, quiet=False, use_cookies=False)
+
+                for fname in ["pytorch_model.bin", "pytorch_model_1.bin", "pytorch_model_2.bin"]:
+                    candidate = os.path.join(tmp_dir, fname)
+                    dst_path = os.path.join(models_dir, fname)
+                    try:
+                        if os.path.exists(candidate) and os.path.getsize(candidate) > 100 * 1024 * 1024:
+                            import shutil
+                            shutil.move(candidate, dst_path)
+                            print(f"✅ Retrieved {fname} from Google Drive folder")
+                    except Exception as e:
+                        print(f"⚠️ Could not move {fname} from Google Drive download: {e}")
+            except Exception as e:
+                print(f"⚠️ Google Drive folder download failed: {e}")
+
         # Ensure CLIP Vision image encoder exists (for detail_encoder)
         image_encoder_dir = os.path.join("models", "image_encoder_l")
         os.makedirs(image_encoder_dir, exist_ok=True)
@@ -753,7 +786,9 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             # Helper to wrap torch.load calls with try/except, preserving indentation
             def wrap_load(var_name: str) -> None:
                 nonlocal content
+                # First try exact line replace preserving indentation
                 pattern_local = rf"^(\s*){var_name}\s*=\s*torch\\.load\(([^)]+)\)\s*$"
+                replaced = False
                 if re.search(pattern_local, content, flags=re.M):
                     replacement_local = (
                         rf"\1try:\n"
@@ -763,6 +798,21 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                         rf"\1    {var_name} = {{}}\n"
                     )
                     content = re.sub(pattern_local, replacement_local, content, flags=re.M)
+                    replaced = True
+                # Fallback: broader inline replacement if exact match wasn't found
+                if not replaced and f"{var_name} = torch.load(" in content:
+                    def repl_line(m):
+                        indent = m.group(1)
+                        inside = m.group(2)
+                        return (
+                            f"{indent}try:\n"
+                            f"{indent}    {var_name} = torch.load({inside})\n"
+                            f"{indent}except Exception as _e:\n"
+                            f"{indent}    print(f\"⚠️ Could not load stablemakeup weights: {{_e}}. Proceeding without adapters.\")\n"
+                            f"{indent}    {var_name} = {{}}\n"
+                        )
+                    broad_pattern = rf"^(\s*){var_name}\s*=\s*torch\\.load\(([^)]+)\)"
+                    content = re.sub(broad_pattern, repl_line, content, flags=re.M)
 
             # Wrap all three state_dict loads
             wrap_load("makeup_state_dict")
