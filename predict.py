@@ -51,15 +51,9 @@ class Predictor(BasePredictor):
             # Normalize detail_encoder constructor at runtime to avoid duplicate args
             self.monkey_patch_detail_encoder_init()
             
-            # Save input images
-            source_path = "test_imgs/id/source.jpg"
-            reference_path = "test_imgs/makeup/reference.jpg"
-            
-            source_img = Image.open(source_image).convert("RGB")
-            source_img.save(source_path)
-            
-            reference_img = Image.open(reference_image).convert("RGB")
-            reference_img.save(reference_path)
+            # Use original input file paths; infer_with_params will copy into test folders
+            source_path = str(source_image)
+            reference_path = str(reference_image)
             
             # Import and run inference (after all fixes are applied)
             from infer_kps import infer_with_params
