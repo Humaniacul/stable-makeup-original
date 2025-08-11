@@ -47,7 +47,7 @@ class Predictor(BasePredictor):
             
             # Fix all compatibility issues BEFORE any imports
             self.fix_all_issues()
-
+            
             # Normalize detail_encoder constructor at runtime to avoid duplicate args
             self.monkey_patch_detail_encoder_init()
             
@@ -329,6 +329,13 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                         break
                 content = '\n'.join(lines)
                 print("✅ Fixed individual import lines")
+
+            # Also remove unsupported generator kwarg from VAE.decode call
+            decode_pattern = r"self\.vae\.decode\([^)]*generator=generator[^)]*\)\s*\[\s*0\s*\]"
+            decode_replacement = "self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]"
+            if re.search(decode_pattern, content):
+                content = re.sub(decode_pattern, decode_replacement, content)
+                print("✅ Removed generator kwarg from VAE.decode")
             
             # Write the fixed content back
             with open(pipeline_file, "w") as f:
@@ -367,12 +374,12 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             for file in files:
                 if not file.endswith(".py") or file == "pipeline_sd15.py":
                     continue
-                filepath = os.path.join(root, file)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
                         lines = f.readlines()
-
-                    modified = False
+                        
+                        modified = False
                     new_lines: List[str] = []
                     for line in lines:
                         if line.strip().startswith("from diffusers.utils import"):
@@ -398,13 +405,13 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                             except Exception:
                                 pass
                         new_lines.append(line)
-
-                    if modified:
-                        with open(filepath, "w", encoding="utf-8") as f:
+                        
+                        if modified:
+                            with open(filepath, "w", encoding="utf-8") as f:
                             f.writelines(new_lines)
-                        print(f"✅ Fixed {filepath}")
+                            print(f"✅ Fixed {filepath}")
                 except Exception:
-                    continue
+                        continue
         print("✅ Diffusers imports fixed!")
 
     def fix_un_token_damage(self):
@@ -666,11 +673,11 @@ def unscale_lora_layers(*args, **kwargs): pass'''
 def infer_with_params(source_path, reference_path, intensity=1.0):
     """Minimal single-pair inference using globals built at import time."""
     import os, shutil
-
+    
     os.makedirs("test_imgs/id", exist_ok=True)
-    os.makedirs("test_imgs/makeup", exist_ok=True)
+    os.makedirs("test_imgs/makeup", exist_ok=True) 
     os.makedirs("output", exist_ok=True)
-
+    
     dst_id = os.path.join("test_imgs", "id", "input.jpg")
     dst_mu = os.path.join("test_imgs", "makeup", "ref.jpg")
 
@@ -692,7 +699,7 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         pipe=pipe,
         guidance_scale=guidance,
     )
-    return result
+        return result
 '''
                 content += function_code
                 
