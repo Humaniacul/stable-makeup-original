@@ -646,22 +646,26 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         os.makedirs(models_dir, exist_ok=True)
         # Ensure stablemakeup adapter weights exist by copying from local repo if present
         repo_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
-        local_stablemakeup = os.path.join(repo_root, "stable-makeup-fresh", "models", "stablemakeup")
-        if os.path.isdir(local_stablemakeup):
-            for fname in [
-                "pytorch_model.bin",
-                "pytorch_model_1.bin",
-                "pytorch_model_2.bin",
-            ]:
-                src = os.path.join(local_stablemakeup, fname)
-                dst = os.path.join(models_dir, fname)
-                try:
-                    if os.path.exists(src) and not os.path.exists(dst):
-                        import shutil
-                        shutil.copy2(src, dst)
-                        print(f"✅ Copied {fname} into {models_dir}")
-                except Exception as e:
-                    print(f"⚠️ Could not copy {fname}: {e}")
+        local_candidates = [
+            os.path.join(repo_root, "stable-makeup-fresh", "models", "stablemakeup"),
+            os.path.join(repo_root, "stable-makeup-original", "models", "stablemakeup"),
+        ]
+        for local_dir in local_candidates:
+            if os.path.isdir(local_dir):
+                for fname in [
+                    "pytorch_model.bin",
+                    "pytorch_model_1.bin",
+                    "pytorch_model_2.bin",
+                ]:
+                    src = os.path.join(local_dir, fname)
+                    dst = os.path.join(models_dir, fname)
+                    try:
+                        if os.path.exists(src) and not os.path.exists(dst):
+                            import shutil
+                            shutil.copy2(src, dst)
+                            print(f"✅ Copied {fname} from {local_dir} → {models_dir}")
+                    except Exception as e:
+                        print(f"⚠️ Could not copy {fname} from {local_dir}: {e}")
 
         # If still missing, download from GitHub repo (supports Git LFS via redirect)
         missing = [
@@ -671,30 +675,42 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         if missing:
             gh_repo = os.environ.get("MAKEUP_WEIGHTS_REPO", "Humaniacul/stable-makeup-original")
             gh_branch = os.environ.get("MAKEUP_WEIGHTS_BRANCH", "main")
+            base_media = f"https://media.githubusercontent.com/media/{gh_repo}/{gh_branch}/models/stablemakeup"
             base_raw = f"https://raw.githubusercontent.com/{gh_repo}/{gh_branch}/models/stablemakeup"
-            print(f"⬇️ Attempting to download adapter weights from GitHub repo {gh_repo}@{gh_branch}...")
+            token = os.environ.get("GITHUB_TOKEN")
+            headers = {"Authorization": f"token {token}"} if token else {}
+            print(f"⬇️ Attempting to download adapter weights from GitHub repo {gh_repo}@{gh_branch} (Git LFS)...")
             for fname in missing:
-                url = f"{base_raw}/{fname}"
                 dst_path = os.path.join(models_dir, fname)
-                try:
-                    import requests
-                    with requests.get(url, stream=True, allow_redirects=True, timeout=60) as r:
-                        r.raise_for_status()
-                        with open(dst_path, "wb") as f:
-                            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                                if chunk:
-                                    f.write(chunk)
-                    # Validate size (> 100MB)
-                    if os.path.getsize(dst_path) < 100 * 1024 * 1024:
-                        raise RuntimeError("downloaded file too small, likely a pointer")
-                    print(f"✅ Downloaded {fname} from GitHub")
-                except Exception as e:
-                    if os.path.exists(dst_path):
-                        try:
-                            os.remove(dst_path)
-                        except Exception:
-                            pass
-                    print(f"⚠️ Failed to download {fname} from {url}: {e}")
+                urls = [
+                    f"{base_media}/{fname}",  # works with Git LFS
+                    f"{base_raw}/{fname}",    # fallback (may return pointer)
+                ]
+                success = False
+                for url in urls:
+                    try:
+                        import requests
+                        with requests.get(url, stream=True, allow_redirects=True, timeout=300, headers=headers) as r:
+                            r.raise_for_status()
+                            with open(dst_path, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=4 * 1024 * 1024):
+                                    if chunk:
+                                        f.write(chunk)
+                        # Validate size (> 100MB)
+                        if os.path.getsize(dst_path) < 100 * 1024 * 1024:
+                            raise RuntimeError("downloaded file too small, likely a pointer")
+                        print(f"✅ Downloaded {fname} from {url}")
+                        success = True
+                        break
+                    except Exception as e:
+                        if os.path.exists(dst_path):
+                            try:
+                                os.remove(dst_path)
+                            except Exception:
+                                pass
+                        print(f"⚠️ Failed to download {fname} from {url}: {e}")
+                if not success:
+                    print(f"⚠️ All download attempts failed for {fname}. We'll proceed with graceful fallbacks.")
 
         # Ensure CLIP Vision image encoder exists (for detail_encoder)
         image_encoder_dir = os.path.join("models", "image_encoder_l")
@@ -734,18 +750,24 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 content = f.read()
 
             original = content
-            # Wrap torch.load(makeup_encoder_path) in try/except
-            pattern = r"makeup_state_dict\s*=\s*torch\.load\(([^)]+)\)"
-            if re.search(pattern, content):
-                replacement = (
-                    "try:\n"
-                    "    makeup_state_dict = torch.load(\\1)\n"
-                    "except Exception as _e:\n"
-                    "    print(f\"⚠️ Could not load stablemakeup weights: {_e}. Proceeding without adapters.\")\n"
-                    "    makeup_state_dict = {}\n"
-                )
-                # Keep indentation by inserting at same location
-                content = re.sub(pattern, replacement, content)
+            # Helper to wrap torch.load calls with try/except, preserving indentation
+            def wrap_load(var_name: str) -> None:
+                nonlocal content
+                pattern_local = rf"^(\s*){var_name}\s*=\s*torch\\.load\(([^)]+)\)\s*$"
+                if re.search(pattern_local, content, flags=re.M):
+                    replacement_local = (
+                        rf"\1try:\n"
+                        rf"\1    {var_name} = torch.load(\2)\n"
+                        rf"\1except Exception as _e:\n"
+                        rf"\1    print(f\"⚠️ Could not load stablemakeup weights: {{_e}}. Proceeding without adapters.\")\n"
+                        rf"\1    {var_name} = {{}}\n"
+                    )
+                    content = re.sub(pattern_local, replacement_local, content, flags=re.M)
+
+            # Wrap all three state_dict loads
+            wrap_load("makeup_state_dict")
+            wrap_load("id_state_dict")
+            wrap_load("pose_state_dict")
 
             if content != original:
                 with open(infer_file, 'w', encoding='utf-8') as f:
