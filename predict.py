@@ -177,6 +177,8 @@ class Predictor(BasePredictor):
         self.fix_syntax_errors()
         # Repair any accidental token merges from earlier import cleanup
         self.fix_un_token_damage()
+        # Ensure infer_kps.py has clean, valid imports
+        self.fix_infer_kps_imports()
 
         # Ensure we use a valid Stable Diffusion v1-5 model identifier
         print("🔧 Normalizing model identifiers...")
@@ -414,6 +416,7 @@ def unscale_lora_layers(*args, **kwargs): pass'''
         replacements = [
             ("clip_image_embedscond_clip_image_embeds", "clip_image_embeds, uncond_clip_image_embeds"),
             ("image_prompt_embedscond_image_prompt_embeds", "image_prompt_embeds, uncond_image_prompt_embeds"),
+            ("load_imagefrom ", "load_image\nfrom "),
         ]
         for fp in targets:
             if not os.path.exists(fp):
@@ -430,6 +433,30 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                     print(f"✅ Repaired merged identifiers in {fp}")
             except Exception:
                 pass
+
+    def fix_infer_kps_imports(self):
+        """Ensure infer_kps.py has correct import statements and proper newlines."""
+        infer_file = os.path.join('.', 'infer_kps.py')
+        if not os.path.exists(infer_file):
+            return
+        try:
+            with open(infer_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            original = content
+            # Fix wrong utils path
+            content = content.replace('from utils.pipeline_sd15 import', 'from pipeline_sd15 import')
+            # Split any merged 'load_imagefrom ...' into two lines
+            content = re.sub(r'(from\s+diffusers\.utils\s+import\s+load_image)\s*from\s+', r'\1\nfrom ', content)
+            # Ensure each import starts on its own line
+            content = content.replace('import load_imagefrom', 'import load_image\nfrom')
+
+            if content != original:
+                with open(infer_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                print("✅ infer_kps.py imports normalized")
+        except Exception:
+            pass
 
     def fix_syntax_errors(self):
         """Fix syntax errors like trailing dots and malformed parameters"""
