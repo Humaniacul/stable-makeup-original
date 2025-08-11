@@ -732,16 +732,23 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 os.makedirs(tmp_dir, exist_ok=True)
                 gdown.download_folder(url=folder_url, output=tmp_dir, quiet=False, use_cookies=False)
 
-                for fname in ["pytorch_model.bin", "pytorch_model_1.bin", "pytorch_model_2.bin"]:
-                    candidate = os.path.join(tmp_dir, fname)
-                    dst_path = os.path.join(models_dir, fname)
-                    try:
-                        if os.path.exists(candidate) and os.path.getsize(candidate) > 100 * 1024 * 1024:
-                            import shutil
-                            shutil.move(candidate, dst_path)
-                            print(f"✅ Retrieved {fname} from Google Drive folder")
-                    except Exception as e:
-                        print(f"⚠️ Could not move {fname} from Google Drive download: {e}")
+                # Search recursively for expected filenames and move them into place
+                found_any = False
+                for root, _dirs, files in os.walk(tmp_dir):
+                    for fname in ["pytorch_model.bin", "pytorch_model_1.bin", "pytorch_model_2.bin"]:
+                        if fname in files:
+                            candidate = os.path.join(root, fname)
+                            dst_path = os.path.join(models_dir, fname)
+                            try:
+                                if os.path.getsize(candidate) > 100 * 1024 * 1024:
+                                    import shutil
+                                    shutil.move(candidate, dst_path)
+                                    print(f"✅ Retrieved {fname} from Google Drive folder")
+                                    found_any = True
+                            except Exception as e:
+                                print(f"⚠️ Could not move {fname} from Google Drive download: {e}")
+                if not found_any:
+                    print("⚠️ Google Drive download completed but expected files were not found.")
             except Exception as e:
                 print(f"⚠️ Google Drive folder download failed: {e}")
 
