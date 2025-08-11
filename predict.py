@@ -56,8 +56,12 @@ class Predictor(BasePredictor):
             reference_path = str(reference_image)
             
             # Import and run inference (after all fixes are applied)
-            from infer_kps import infer_with_params
-            result_image = infer_with_params(source_path, reference_path, makeup_intensity)
+            try:
+                from infer_kps import infer_with_params
+                result_image = infer_with_params(source_path, reference_path, makeup_intensity)
+            except ModuleNotFoundError:
+                # Fallback to gradio_demo_kps if infer_kps is absent in this repo copy
+                result_image = self._fallback_infer_via_gradio_demo(source_path, reference_path, makeup_intensity)
             
             # Save result
             result_path = "/tmp/result.jpg"
@@ -207,6 +211,40 @@ class Predictor(BasePredictor):
         self.fix_missing_makeup_weights_handling()
         print("✅ Makeup weights handling hardened")
 
+    def _fallback_infer_via_gradio_demo(self, source_path: str, reference_path: str, intensity: float):
+        """Fallback path when infer_kps.py is not present. Uses globals from gradio_demo_kps."""
+        import importlib.util
+        import types
+        # Load gradio_demo_kps as a module
+        spec = importlib.util.spec_from_file_location("gradio_demo_kps", os.path.join(os.getcwd(), "gradio_demo_kps.py"))
+        if spec is None or spec.loader is None:
+            raise ModuleNotFoundError("gradio_demo_kps.py not found for fallback inference")
+        gdk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gdk)  # type: ignore
+
+        # Prepare IO
+        os.makedirs("test_imgs/id", exist_ok=True)
+        os.makedirs("test_imgs/makeup", exist_ok=True)
+        dst_id = os.path.join("test_imgs", "id", "input.jpg")
+        dst_mu = os.path.join("test_imgs", "makeup", "ref.jpg")
+        if os.path.abspath(source_path) != os.path.abspath(dst_id):
+            import shutil
+            shutil.copyfile(source_path, dst_id)
+        if os.path.abspath(reference_path) != os.path.abspath(dst_mu):
+            import shutil
+            shutil.copyfile(reference_path, dst_mu)
+
+        id_image = gdk.load_image(dst_id).resize((512, 512))
+        makeup_image = gdk.load_image(dst_mu).resize((512, 512))
+        pose_image = gdk.get_draw(id_image, size=512)
+        guidance = 1.6 * float(intensity)
+        return gdk.makeup_encoder.generate(
+            id_image=[id_image, pose_image],
+            makeup_image=makeup_image,
+            pipe=gdk.pipe,
+            guidance_scale=guidance,
+        )
+
     def fix_detail_encoder_init_signature(self):
         """Ensure detail_encoder.__init__ includes 'self' as the first parameter.
         Some copies of the repo have a malformed signature: def __init__(unet, image_encoder_path, ...)
@@ -264,6 +302,10 @@ class Predictor(BasePredictor):
     def fix_pipeline_sd15_file(self):
         """Completely fix the pipeline_sd15.py file imports"""
         pipeline_file = "pipeline_sd15.py"
+        if not os.path.exists(pipeline_file):
+            alt = os.path.join("utils", "pipeline_sd15.py")
+            if os.path.exists(alt):
+                pipeline_file = alt
         if os.path.exists(pipeline_file):
             with open(pipeline_file, "r") as f:
                 content = f.read()
