@@ -175,6 +175,8 @@ class Predictor(BasePredictor):
         
         print("🔧 Fixing syntax errors...")
         self.fix_syntax_errors()
+        # Repair any accidental token merges from earlier import cleanup
+        self.fix_un_token_damage()
 
         # Ensure we use a valid Stable Diffusion v1-5 model identifier
         print("🔧 Normalizing model identifiers...")
@@ -358,40 +360,76 @@ def unscale_lora_layers(*args, **kwargs): pass'''
         print("✅ Huggingface imports fixed!")
 
     def fix_diffusers_imports(self):
-        """Fix diffusers imports by removing non-existent imports"""
-        for root, dirs, files in os.walk("."):
+        """Fix diffusers utils imports safely (only on import lines)."""
+        for root, _dirs, files in os.walk("."):
             for file in files:
-                if file.endswith(".py") and "pipeline_sd15.py" not in file:  # Skip pipeline_sd15.py, we handle it separately
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            content = f.read()
-                        
-                        # Remove problematic diffusers imports
-                        problematic_imports = [
-                            "USE_PEFT_BACKEND",
-                            "scale_lora_layers", 
-                            "unscale_lora_layers",
-                            "un",  # Fix the broken 'un' import
-                            "randn_tensor"  # This doesn't exist in 0.21.4
-                        ]
-                        
-                        modified = False
-                        for imp in problematic_imports:
-                            if imp in content:
-                                # Remove from import lines
-                                content = re.sub(rf",\s*{imp}", "", content)
-                                content = re.sub(rf"{imp},\s*", "", content)
-                                content = re.sub(rf"from diffusers\.utils import.*{imp}.*", "", content)
+                if not file.endswith(".py") or file == "pipeline_sd15.py":
+                    continue
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+
+                    modified = False
+                    new_lines: List[str] = []
+                    for line in lines:
+                        if line.strip().startswith("from diffusers.utils import"):
+                            try:
+                                head, tail = line.split("import", 1)
+                                items = tail.strip()
+                                trailing = ""
+                                if items.startswith("("):
+                                    # multi-line style in one line
+                                    items = items[1:]
+                                    if ")" in items:
+                                        items, rest = items.split(")", 1)
+                                        trailing = ")" + rest
+                                # split tokens by comma
+                                tokens = [t.strip() for t in items.split(",") if t.strip()]
+                                drop = {"USE_PEFT_BACKEND", "scale_lora_layers", "unscale_lora_layers", "un", "randn_tensor"}
+                                kept = [t for t in tokens if t not in drop]
+                                if kept:
+                                    line = f"{head}import " + ", ".join(kept) + f"{trailing}"
+                                else:
+                                    line = ""
                                 modified = True
-                        
-                        if modified:
-                            with open(filepath, "w", encoding="utf-8") as f:
-                                f.write(content)
-                            print(f"✅ Fixed {filepath}")
-                    except Exception as e:
-                        continue
+                            except Exception:
+                                pass
+                        new_lines.append(line)
+
+                    if modified:
+                        with open(filepath, "w", encoding="utf-8") as f:
+                            f.writelines(new_lines)
+                        print(f"✅ Fixed {filepath}")
+                except Exception:
+                    continue
         print("✅ Diffusers imports fixed!")
+
+    def fix_un_token_damage(self):
+        """Repair merged identifiers caused by accidental ', un' removal earlier."""
+        targets = [
+            os.path.join("detail_encoder", "encoder_plus.py"),
+            os.path.join("infer_kps.py"),
+        ]
+        replacements = [
+            ("clip_image_embedscond_clip_image_embeds", "clip_image_embeds, uncond_clip_image_embeds"),
+            ("image_prompt_embedscond_image_prompt_embeds", "image_prompt_embeds, uncond_image_prompt_embeds"),
+        ]
+        for fp in targets:
+            if not os.path.exists(fp):
+                continue
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    content = f.read()
+                original = content
+                for a, b in replacements:
+                    content = content.replace(a, b)
+                if content != original:
+                    with open(fp, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    print(f"✅ Repaired merged identifiers in {fp}")
+            except Exception:
+                pass
 
     def fix_syntax_errors(self):
         """Fix syntax errors like trailing dots and malformed parameters"""
