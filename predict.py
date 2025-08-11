@@ -25,12 +25,34 @@ class Predictor(BasePredictor):
         print(f"🎨 Starting Stable-Makeup inference with intensity: {makeup_intensity}")
         
         try:
-            # Clone repository if not exists
-            if not os.path.exists("Stable-Makeup"):
+            # Ensure repository exists with expected files (avoid broken submodule gitlink)
+            repo_dir = "Stable-Makeup"
+            need_clone = False
+            if not os.path.isdir(repo_dir):
+                need_clone = True
+            else:
+                expected = [
+                    "infer_kps.py",
+                    "gradio_demo_kps.py",
+                    "pipeline_sd15.py",
+                    os.path.join("utils", "pipeline_sd15.py"),
+                ]
+                if not any(os.path.exists(os.path.join(repo_dir, p)) for p in expected):
+                    need_clone = True
+
+            if need_clone:
                 print("📥 Cloning original Stable-Makeup repository...")
-                subprocess.run(["git", "clone", "https://github.com/Xiaojiu-z/Stable-Makeup.git"], check=True)
-            
-            os.chdir("Stable-Makeup")
+                try:
+                    if os.path.exists(repo_dir) and not os.path.isdir(repo_dir):
+                        os.remove(repo_dir)
+                    elif os.path.isdir(repo_dir):
+                        import shutil
+                        shutil.rmtree(repo_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                subprocess.run(["git", "clone", "https://github.com/Xiaojiu-z/Stable-Makeup.git", repo_dir], check=True)
+
+            os.chdir(repo_dir)
             sys.path.append(os.getcwd())
             
             # Create necessary directories
@@ -216,7 +238,13 @@ class Predictor(BasePredictor):
         import importlib.util
         import types
         # Load gradio_demo_kps as a module
-        spec = importlib.util.spec_from_file_location("gradio_demo_kps", os.path.join(os.getcwd(), "gradio_demo_kps.py"))
+        gd_path = os.path.join(os.getcwd(), "gradio_demo_kps.py")
+        if not os.path.exists(gd_path):
+            # Some copies place it under scripts/
+            alt = os.path.join(os.getcwd(), "scripts", "gradio_demo_kps.py")
+            if os.path.exists(alt):
+                gd_path = alt
+        spec = importlib.util.spec_from_file_location("gradio_demo_kps", gd_path)
         if spec is None or spec.loader is None:
             raise ModuleNotFoundError("gradio_demo_kps.py not found for fallback inference")
         gdk = importlib.util.module_from_spec(spec)
