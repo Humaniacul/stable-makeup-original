@@ -374,12 +374,12 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             for file in files:
                 if not file.endswith(".py") or file == "pipeline_sd15.py":
                     continue
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
                         lines = f.readlines()
-                        
-                        modified = False
+
+                    modified = False
                     new_lines: List[str] = []
                     for line in lines:
                         if line.strip().startswith("from diffusers.utils import"):
@@ -388,12 +388,11 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                                 items = tail.strip()
                                 trailing = ""
                                 if items.startswith("("):
-                                    # multi-line style in one line
+                                    # multi-line style on one line
                                     items = items[1:]
                                     if ")" in items:
                                         items, rest = items.split(")", 1)
                                         trailing = ")" + rest
-                                # split tokens by comma
                                 tokens = [t.strip() for t in items.split(",") if t.strip()]
                                 drop = {"USE_PEFT_BACKEND", "scale_lora_layers", "unscale_lora_layers", "un", "randn_tensor"}
                                 kept = [t for t in tokens if t not in drop]
@@ -405,13 +404,13 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                             except Exception:
                                 pass
                         new_lines.append(line)
-                        
-                        if modified:
-                            with open(filepath, "w", encoding="utf-8") as f:
+
+                    if modified:
+                        with open(filepath, "w", encoding="utf-8") as f:
                             f.writelines(new_lines)
-                            print(f"✅ Fixed {filepath}")
+                        print(f"✅ Fixed {filepath}")
                 except Exception:
-                        continue
+                    continue
         print("✅ Diffusers imports fixed!")
 
     def fix_un_token_damage(self):
