@@ -81,8 +81,8 @@ class Predictor(BasePredictor):
             try:
                 from infer_kps import infer_with_params
                 result_image = infer_with_params(source_path, reference_path, makeup_intensity)
-            except ModuleNotFoundError:
-                # Fallback to gradio_demo_kps if infer_kps is absent in this repo copy
+            except Exception:
+                # Any import/parse error: fallback to gradio_demo_kps
                 result_image = self._fallback_infer_via_gradio_demo(source_path, reference_path, makeup_intensity)
             
             # Save result
