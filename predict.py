@@ -266,8 +266,13 @@ class Predictor(BasePredictor):
             import shutil
             shutil.copyfile(reference_path, dst_mu)
 
-        id_image = gdk.load_image(dst_id).resize((512, 512))
-        makeup_image = gdk.load_image(dst_mu).resize((512, 512))
+        # Prefer module's load_image if present, otherwise fall back to PIL
+        load_image_fn = getattr(gdk, 'load_image', None)
+        if load_image_fn is None:
+            from PIL import Image as _PILImage
+            load_image_fn = lambda p: _PILImage.open(p).convert('RGB')
+        id_image = load_image_fn(dst_id).resize((512, 512))
+        makeup_image = load_image_fn(dst_mu).resize((512, 512))
         pose_image = gdk.get_draw(id_image, size=512)
         guidance = 1.6 * float(intensity)
         return gdk.makeup_encoder.generate(
@@ -742,39 +747,34 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             
             # Add the custom infer_with_params function if it doesn't exist
             if "def infer_with_params" not in content:
-                function_code = '''
-def infer_with_params(source_path, reference_path, intensity=1.0):
-    """Minimal single-pair inference using globals built at import time."""
-    import os, shutil
-    
-    os.makedirs("test_imgs/id", exist_ok=True)
-    os.makedirs("test_imgs/makeup", exist_ok=True) 
-    os.makedirs("output", exist_ok=True)
-    
-    dst_id = os.path.join("test_imgs", "id", "input.jpg")
-    dst_mu = os.path.join("test_imgs", "makeup", "ref.jpg")
-
-    # Avoid SameFileError
-    if os.path.abspath(source_path) != os.path.abspath(dst_id):
-        shutil.copyfile(source_path, dst_id)
-    if os.path.abspath(reference_path) != os.path.abspath(dst_mu):
-        shutil.copyfile(reference_path, dst_mu)
-
-    id_image = load_image(dst_id).resize((512, 512))
-    makeup_image = load_image(dst_mu).resize((512, 512))
-    pose_image = get_draw(id_image, size=512)
-
-    # Use provided intensity to tweak guidance if desired
-    guidance = 1.6 * float(intensity)
-    result = makeup_encoder.generate(
-        id_image=[id_image, pose_image],
-        makeup_image=makeup_image,
-        pipe=pipe,
-        guidance_scale=guidance,
-    )
-        return result
-'''
-                content += function_code
+                function_code = (
+                    "def infer_with_params(source_path, reference_path, intensity=1.0):\n"
+                    "    \"\"\"Minimal single-pair inference using globals built at import time.\"\"\"\n"
+                    "    import os, shutil\n\n"
+                    "    os.makedirs(\"test_imgs/id\", exist_ok=True)\n"
+                    "    os.makedirs(\"test_imgs/makeup\", exist_ok=True)\n"
+                    "    os.makedirs(\"output\", exist_ok=True)\n\n"
+                    "    dst_id = os.path.join(\"test_imgs\", \"id\", \"input.jpg\")\n"
+                    "    dst_mu = os.path.join(\"test_imgs\", \"makeup\", \"ref.jpg\")\n\n"
+                    "    # Avoid SameFileError\n"
+                    "    if os.path.abspath(source_path) != os.path.abspath(dst_id):\n"
+                    "        shutil.copyfile(source_path, dst_id)\n"
+                    "    if os.path.abspath(reference_path) != os.path.abspath(dst_mu):\n"
+                    "        shutil.copyfile(reference_path, dst_mu)\n\n"
+                    "    id_image = load_image(dst_id).resize((512, 512))\n"
+                    "    makeup_image = load_image(dst_mu).resize((512, 512))\n"
+                    "    pose_image = get_draw(id_image, size=512)\n\n"
+                    "    # Use provided intensity to tweak guidance if desired\n"
+                    "    guidance = 1.6 * float(intensity)\n"
+                    "    result = makeup_encoder.generate(\n"
+                    "        id_image=[id_image, pose_image],\n"
+                    "        makeup_image=makeup_image,\n"
+                    "        pipe=pipe,\n"
+                    "        guidance_scale=guidance,\n"
+                    "    )\n"
+                    "    return result\n"
+                )
+                content += "\n" + function_code + "\n"
                 
                 with open(infer_file, "w") as f:
                     f.write(content)
