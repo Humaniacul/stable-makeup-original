@@ -448,12 +448,12 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             for file in files:
                 if not file.endswith(".py") or file == "pipeline_sd15.py":
                     continue
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
                         lines = f.readlines()
-                        
-                        modified = False
+
+                    modified = False
                     new_lines: List[str] = []
                     for line in lines:
                         if line.strip().startswith("from diffusers.utils import"):
@@ -478,13 +478,13 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                             except Exception:
                                 pass
                         new_lines.append(line)
-                        
-                        if modified:
-                            with open(filepath, "w", encoding="utf-8") as f:
+
+                    if modified:
+                        with open(filepath, "w", encoding="utf-8") as f:
                             f.writelines(new_lines)
-                            print(f"✅ Fixed {filepath}")
+                        print(f"✅ Fixed {filepath}")
                 except Exception:
-                        continue
+                    continue
         print("✅ Diffusers imports fixed!")
 
     def fix_un_token_damage(self):
