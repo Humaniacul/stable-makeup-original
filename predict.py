@@ -79,8 +79,9 @@ class Predictor(BasePredictor):
             
             # Import and run inference (after all fixes are applied)
             try:
-            from infer_kps import infer_with_params
-            result_image = infer_with_params(source_path, reference_path, makeup_intensity)
+                # Use dynamic import to avoid Cog's AST import stripping breaking indentation
+                infer_kps = __import__("infer_kps")
+                result_image = infer_kps.infer_with_params(source_path, reference_path, makeup_intensity)
             except Exception:
                 # Any import/parse error: fallback to gradio_demo_kps
                 result_image = self._fallback_infer_via_gradio_demo(source_path, reference_path, makeup_intensity)
