@@ -79,8 +79,8 @@ class Predictor(BasePredictor):
             
             # Import and run inference (after all fixes are applied)
             try:
-                from infer_kps import infer_with_params
-                result_image = infer_with_params(source_path, reference_path, makeup_intensity)
+            from infer_kps import infer_with_params
+            result_image = infer_with_params(source_path, reference_path, makeup_intensity)
             except Exception:
                 # Any import/parse error: fallback to gradio_demo_kps
                 result_image = self._fallback_infer_via_gradio_demo(source_path, reference_path, makeup_intensity)
@@ -225,6 +225,9 @@ class Predictor(BasePredictor):
         
         print("🔧 Adding missing functions to infer_kps.py...")
         self.add_infer_function()
+        
+        # Ensure no Gradio UI is launched which would block inference
+        self.disable_gradio_launch()
         
         print("✅ Fixed all issues in infer_kps.py")
 
@@ -444,12 +447,12 @@ def unscale_lora_layers(*args, **kwargs): pass'''
             for file in files:
                 if not file.endswith(".py") or file == "pipeline_sd15.py":
                     continue
-                filepath = os.path.join(root, file)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
                         lines = f.readlines()
-
-                    modified = False
+                        
+                        modified = False
                     new_lines: List[str] = []
                     for line in lines:
                         if line.strip().startswith("from diffusers.utils import"):
@@ -474,13 +477,13 @@ def unscale_lora_layers(*args, **kwargs): pass'''
                             except Exception:
                                 pass
                         new_lines.append(line)
-
-                    if modified:
-                        with open(filepath, "w", encoding="utf-8") as f:
+                        
+                        if modified:
+                            with open(filepath, "w", encoding="utf-8") as f:
                             f.writelines(new_lines)
-                        print(f"✅ Fixed {filepath}")
+                            print(f"✅ Fixed {filepath}")
                 except Exception:
-                    continue
+                        continue
         print("✅ Diffusers imports fixed!")
 
     def fix_un_token_damage(self):
@@ -775,6 +778,31 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 with open(infer_file, "w") as f:
                     f.write(content)
                 print("✅ Added infer_with_params function")
+
+    def disable_gradio_launch(self):
+        """Disable any gradio Interface/Blocks .launch() calls in repo files to avoid blocking."""
+        targets = [
+            os.path.join('.', 'infer_kps.py'),
+            os.path.join('.', 'gradio_demo_kps.py'),
+            os.path.join('.', 'scripts', 'gradio_demo_kps.py'),
+        ]
+        for fp in targets:
+            if not os.path.exists(fp):
+                continue
+            try:
+                with open(fp, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                original = content
+                # Comment out any line that calls .launch(
+                content = re.sub(r'^(\s*.*?\.launch\s*\(.*)$', r'# \1', content, flags=re.M)
+                # Also handle "demo.launch(" common pattern robustly
+                content = re.sub(r'^(\s*demo\.launch\s*\(.*)$', r'# \1', content, flags=re.M)
+                if content != original:
+                    with open(fp, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"✅ Disabled gradio launch in {fp}")
+            except Exception:
+                pass
 
     def copy_model_weights(self, models_dir: str):
         """Copy pre-trained model weights to the expected location"""
