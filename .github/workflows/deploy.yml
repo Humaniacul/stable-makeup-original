@@ -17,13 +17,21 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install Cog (APT repository)
+    - name: Install Cog (direct download)
       run: |
-        sudo apt-get update -y
-        curl -fsSL https://packagecloud.io/install/repositories/replicate/cog/script.deb.sh | sudo bash
-        sudo apt-get install -y cog
-        which cog
-        cog --version
+        set -euo pipefail
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then
+          ASSET="cog_Linux_x86_64"
+        elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+          ASSET="cog_Linux_arm64"
+        else
+          echo "Unsupported architecture: $ARCH" >&2
+          exit 1
+        fi
+        sudo curl -fL -o /usr/local/bin/cog "https://github.com/replicate/cog/releases/latest/download/${ASSET}"
+        sudo chmod +x /usr/local/bin/cog
+        /usr/local/bin/cog --version
 
     - name: Login to Replicate
       env:
