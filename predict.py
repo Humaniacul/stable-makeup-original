@@ -24,6 +24,9 @@ class Predictor(BasePredictor):
         makeup_intensity: float = Input(description="Makeup transfer intensity", default=1.0, ge=0.1, le=2.0)
     ) -> Path:
         print(f"🎨 Starting Stable-Makeup inference with intensity: {makeup_intensity}")
+        # Enable eye preservation by default unless explicitly disabled in env
+        os.environ.setdefault("MAKEUP_PRESERVE_EYES", "1")
+        os.environ.setdefault("MAKEUP_PRESERVE_EYES_FEATHER", "2.0")
         
         try:
             # Ensure repository exists with expected files (avoid broken submodule gitlink)
