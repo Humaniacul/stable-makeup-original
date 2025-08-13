@@ -6,6 +6,7 @@ import requests
 from typing import List
 import torch
 from PIL import Image
+from PIL import ImageFilter, ImageDraw
 import numpy as np
 import cv2
 from cog import BasePredictor, Input, Path
@@ -88,12 +89,21 @@ class Predictor(BasePredictor):
             
             # Save result
             result_path = "/tmp/result.jpg"
-            if isinstance(result_image, Image.Image):
-                result_image.save(result_path)
-            else:
-                # Handle numpy array case
+            if not isinstance(result_image, Image.Image):
                 result_image = Image.fromarray(result_image.astype(np.uint8))
-                result_image.save(result_path)
+
+            # Optional: preserve original eye colors using SPIGA landmarks (opt-in)
+            try:
+                if str(os.environ.get("MAKEUP_PRESERVE_EYES", "0")).lower() in ("1", "true", "yes"):    
+                    result_image = self._preserve_eyes_colors(
+                        source_path,
+                        result_image,
+                        feather_px=float(os.environ.get("MAKEUP_PRESERVE_EYES_FEATHER", 2.0)),
+                    )
+            except Exception as _e:
+                print(f"⚠️ Eye preservation skipped due to error: {_e}")
+
+            result_image.save(result_path)
             
             print("✅ Stable-Makeup inference completed successfully!")
             return Path(result_path)
@@ -108,6 +118,63 @@ class Predictor(BasePredictor):
             fallback_path = "/tmp/error.jpg"
             fallback.save(fallback_path)
             return Path(fallback_path)
+
+    def _preserve_eyes_colors(self, source_path: str, stylized: Image.Image, feather_px: float = 2.0) -> Image.Image:
+        """Composite the original source eye regions back onto the stylized output using SPIGA landmarks.
+        This is designed to be non-invasive and only runs when explicitly enabled via MAKEUP_PRESERVE_EYES.
+        """
+        # Prepare source at 512x512 to match pipeline output
+        src_img = Image.open(source_path).convert("RGB").resize((512, 512))
+
+        # Get landmarks via SPIGA + facelib
+        try:
+            from spiga.inference.config import ModelConfig as _SPIGAConfig
+            from spiga.inference.framework import SPIGAFramework as _SPIGAFramework
+            from facelib import FaceDetector as _FaceDetector
+            import numpy as _np
+            import cv2 as _cv2
+        except Exception as e:
+            raise RuntimeError(f"Required packages for eye preservation are missing: {e}")
+
+        processor = _SPIGAFramework(_SPIGAConfig("300wpublic"))
+        detector = _FaceDetector()
+
+        bgr = _cv2.cvtColor(_np.asarray(src_img), _cv2.COLOR_RGB2BGR)
+        faces, boxes, scores, landmarks = detector.detect_align(bgr)
+        boxes = [] if boxes is None else boxes.cpu().numpy().tolist()
+        if not boxes:
+            return stylized
+
+        # Convert to SPIGA bbox format (x,y,w,h)
+        bbox_list = []
+        for (x0, y0, x1, y1) in boxes:
+            bbox_list.append((float(x0), float(y0), float(x1 - x0), float(y1 - y0)))
+
+        features = processor.inference(bgr, bbox_list)
+        lms = features.get("landmarks")
+        if lms is None or len(lms) == 0:
+            return stylized
+
+        # Use first face
+        pts = [(float(x), float(y)) for (x, y) in lms[0]]
+
+        # Landmark indices per 68-point layout
+        left_eye = pts[36:42]
+        right_eye = pts[42:48]
+
+        # Build mask from eye polygons
+        mask = Image.new("L", (512, 512), 0)
+        draw = ImageDraw.Draw(mask)
+        if len(left_eye) == 6:
+            draw.polygon(left_eye, fill=255)
+        if len(right_eye) == 6:
+            draw.polygon(right_eye, fill=255)
+        if feather_px and feather_px > 0:
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=float(feather_px)))
+
+        # Composite original eye regions back
+        composited = Image.composite(src_img, stylized, mask)
+        return composited
 
     def fix_spiga_model_loading(self):
         print("🔧 Fixing SPIGA model loading...")
