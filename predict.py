@@ -27,6 +27,8 @@ class Predictor(BasePredictor):
         # Enable eye preservation by default unless explicitly disabled in env
         os.environ.setdefault("MAKEUP_PRESERVE_EYES", "1")
         os.environ.setdefault("MAKEUP_PRESERVE_EYES_FEATHER", "2.0")
+        os.environ.setdefault("MAKEUP_PRESERVE_EYES_DILATE", "5")
+        os.environ.setdefault("MAKEUP_PRESERVE_EYES_MODE", "chroma")
         
         try:
             # Ensure repository exists with expected files (avoid broken submodule gitlink)
