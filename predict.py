@@ -155,23 +155,34 @@ class Predictor(BasePredictor):
 
         features = processor.inference(bgr, bbox_list)
         lms = features.get("landmarks")
-        if lms is None or len(lms) == 0:
-            return stylized
-
-        # Use first face
-        pts = [(float(x), float(y)) for (x, y) in lms[0]]
-
-        # Landmark indices per 68-point layout
-        left_eye = pts[36:42]
-        right_eye = pts[42:48]
-
-        # Build mask from eye polygons
         mask = Image.new("L", (512, 512), 0)
         draw = ImageDraw.Draw(mask)
-        if len(left_eye) == 6:
-            draw.polygon(left_eye, fill=255)
-        if len(right_eye) == 6:
-            draw.polygon(right_eye, fill=255)
+
+        if lms is not None and len(lms) > 0:
+            # Use first face landmarks (68-point format expected)
+            pts = [(float(x), float(y)) for (x, y) in lms[0]]
+            left_eye = pts[36:42]
+            right_eye = pts[42:48]
+            if len(left_eye) == 6:
+                draw.polygon(left_eye, fill=255)
+            if len(right_eye) == 6:
+                draw.polygon(right_eye, fill=255)
+        else:
+            # Fallback: approximate eye rectangles from the first face bbox
+            if bbox_list:
+                x, y, w, h = bbox_list[0]
+                # Left eye ROI
+                lx0 = int(x + 0.20 * w); lx1 = int(x + 0.45 * w)
+                ly0 = int(y + 0.35 * h); ly1 = int(y + 0.55 * h)
+                # Right eye ROI
+                rx0 = int(x + 0.55 * w); rx1 = int(x + 0.80 * w)
+                ry0 = int(y + 0.35 * h); ry1 = int(y + 0.55 * h)
+                draw.rectangle([lx0, ly0, lx1, ly1], fill=255)
+                draw.rectangle([rx0, ry0, rx1, ry1], fill=255)
+            else:
+                # Nothing we can do; return stylized unchanged
+                return stylized
+
         if feather_px and feather_px > 0:
             mask = mask.filter(ImageFilter.GaussianBlur(radius=float(feather_px)))
 
