@@ -186,9 +186,39 @@ class Predictor(BasePredictor):
         if feather_px and feather_px > 0:
             mask = mask.filter(ImageFilter.GaussianBlur(radius=float(feather_px)))
 
-        # Composite original eye regions back
-        composited = Image.composite(src_img, stylized, mask)
-        return composited
+        # Optional dilation to expand coverage
+        try:
+            dilate = int(float(os.environ.get("MAKEUP_PRESERVE_EYES_DILATE", 0)))
+        except Exception:
+            dilate = 0
+        if dilate and dilate > 0:
+            # MaxFilter kernel must be odd and >=3
+            k = max(3, int(dilate) if int(dilate) % 2 == 1 else int(dilate) + 1)
+            try:
+                mask = mask.filter(ImageFilter.MaxFilter(size=k))
+            except Exception:
+                pass
+
+        # Composite preserving either full RGB (default) or only chroma channels
+        mode = str(os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "rgb")).lower()
+        if mode == "chroma":
+            # Blend chroma channels in YCbCr using soft mask weights
+            src_ycc = src_img.convert("YCbCr")
+            sty_ycc = stylized.convert("YCbCr")
+            import numpy as _np
+            src_arr = _np.array(src_ycc, dtype=_np.float32)
+            sty_arr = _np.array(sty_ycc, dtype=_np.float32)
+            m = _np.array(mask, dtype=_np.float32) / 255.0
+            m = _np.expand_dims(m, axis=-1)
+            # Y stays from stylized; Cb/Cr from source (soft blend)
+            out = sty_arr.copy()
+            out[..., 1] = (1.0 - m[..., 0]) * sty_arr[..., 1] + m[..., 0] * src_arr[..., 1]
+            out[..., 2] = (1.0 - m[..., 0]) * sty_arr[..., 2] + m[..., 0] * src_arr[..., 2]
+            out = _np.clip(out, 0, 255).astype("uint8")
+            return Image.fromarray(out, mode="YCbCr").convert("RGB")
+        else:
+            # Default full RGB compositing inside mask
+            return Image.composite(src_img, stylized, mask)
 
     def fix_spiga_model_loading(self):
         print("🔧 Fixing SPIGA model loading...")
