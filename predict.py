@@ -3,7 +3,6 @@ import sys
 import subprocess
 import re
 import requests
-import gdown
 from typing import List
 import torch
 from PIL import Image
@@ -63,6 +62,19 @@ class Predictor(BasePredictor):
             from infer_kps import infer_with_params
             result_image = infer_with_params(source_path, reference_path, makeup_intensity)
             
+            # Optional eye color preservation
+            try:
+                if os.environ.get("MAKEUP_PRESERVE_EYES", "1") == "1":
+                    mode = os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "chroma")
+                    feather = int(os.environ.get("MAKEUP_PRESERVE_EYES_FEATHER", "12"))
+                    if isinstance(result_image, Image.Image):
+                        result_image = self._preserve_eye_color(source_img, result_image, mode=mode, feather=feather)
+                    else:
+                        pil_result = Image.fromarray(result_image.astype(np.uint8))
+                        result_image = self._preserve_eye_color(source_img, pil_result, mode=mode, feather=feather)
+            except Exception as e:
+                print(f"⚠️ Eye preservation skipped: {e}")
+
             # Save result
             result_path = "/tmp/result.jpg"
             if isinstance(result_image, Image.Image):
@@ -88,38 +100,58 @@ class Predictor(BasePredictor):
 
     def fix_spiga_model_loading(self):
         print("🔧 Fixing SPIGA model loading...")
-        # Resolve SPIGA install path dynamically
-        try:
-            import spiga  # type: ignore
-            spiga_root = os.path.dirname(spiga.__file__)
-        except Exception:
-            # Fallback to previous hardcoded path if import fails
-            spiga_root = os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga")
-        spiga_models_dir = os.path.join(spiga_root, "models", "weights")
+        spiga_models_dir = os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/models/weights")
         os.makedirs(spiga_models_dir, exist_ok=True)
         model_path = os.path.join(spiga_models_dir, "spiga_300wpublic.pt")
 
         if os.path.exists(model_path) and os.path.getsize(model_path) > 1000000:
             print("✅ SPIGA model found locally!")
         else:
-            print("📥 Downloading SPIGA 300wpublic weights from Google Drive...")
-            file_id = "1YrbScfMzrAAWMJQYgxdLZ9l57nmTdpQC"
-            try:
-                gdown.download(id=file_id, output=model_path, quiet=False)
-            except Exception:
-                # Fallback to CLI invocation
-                subprocess.run([sys.executable, "-m", "gdown", "--id", file_id, "-O", model_path], check=True)
-
-            # Validate the downloaded file
-            if not os.path.exists(model_path) or os.path.getsize(model_path) < 1_000_000:
-                raise RuntimeError("Downloaded SPIGA weights are missing or too small.")
-            with open(model_path, 'rb') as f:
-                first_bytes = f.read(256)
-            if b'<html' in first_bytes.lower():
-                raise RuntimeError("Downloaded SPIGA weights look like an HTML page.")
+            print("📥 Downloading SPIGA model from HuggingFace...")
+            urls = [
+                "https://huggingface.co/Stkzzzz222/fragments_V2/resolve/main/spxxz.pt",
+                "https://github.com/andresprados/SPIGA/releases/download/v1.0.0/spiga_300wpublic.pt"
+            ]
+            downloaded = False
+            for i, url in enumerate(urls):
+                print(f"🔄 Trying URL {i+1}: {url}")
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    response = requests.get(url, headers=headers, stream=True, timeout=30)
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    block_size = 8192
+                    downloaded_size = 0
+                    
+                    with open(model_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=block_size):
+                            f.write(chunk)
+                            downloaded_size += len(chunk)
+                            if total_size > 0:
+                                progress = (downloaded_size / total_size) * 100
+                                sys.stdout.write(f"\rDownloading: {progress:.2f}%")
+                                sys.stdout.flush()
+                    sys.stdout.write("\n")
+                    
+                    # Verify downloaded file is not HTML
+                    with open(model_path, 'rb') as f:
+                        first_bytes = f.read(100)
+                    if b'<!DOCTYPE html>' in first_bytes or b'<html' in first_bytes:
+                        raise ValueError("Downloaded file is HTML, not a model file.")
+                    
+                    print(f"✅ SPIGA model downloaded successfully from URL {i+1}!")
+                    downloaded = True
+                    break
+                except Exception as e:
+                    print(f"❌ Failed with URL {i+1}: {e}")
+            
+            if not downloaded:
+                print("⚠️ All download attempts failed")
+                raise Exception("Failed to download SPIGA model from all sources.")
 
         # Patch SPIGA framework.py to use local file with PROPER torch.load replacement
-        framework_path = os.path.join(spiga_root, "inference", "framework.py")
+        framework_path = os.path.join(os.path.expanduser("~/.pyenv/versions/3.10.18/lib/python3.10/site-packages/spiga/inference/framework.py"))
         if os.path.exists(framework_path):
             with open(framework_path, "r") as f:
                 content = f.read()
@@ -128,14 +160,13 @@ class Predictor(BasePredictor):
             original_pattern = r'model_state_dict = torch\.hub\.load_state_dict_from_url\([^)]+\)'
             
             if re.search(original_pattern, content):
-                # Replace the entire load_state_dict_from_url call with a simple torch.load (no map_location)
-                new_code = f'''model_state_dict = torch.load("{model_path}")'''
+                # Replace the entire load_state_dict_from_url call with a simple torch.load
+                new_code = f'''model_state_dict = torch.load("{model_path}", map_location=map_location)'''
                 content = re.sub(original_pattern, new_code, content)
-                # Also relax strictness when loading state dicts
-                content = re.sub(r"\.load_state_dict\(model_state_dict\)", ".load_state_dict(model_state_dict, strict=False)", content)
+                
                 with open(framework_path, "w") as f:
                     f.write(content)
-                print("✅ Patched SPIGA framework.py with local torch.load and strict=False!")
+                print("✅ Patched SPIGA framework.py with complete torch.load replacement!")
             else:
                 # Fallback: manual line-by-line replacement for better control
                 lines = content.split('\n')
@@ -144,14 +175,13 @@ class Predictor(BasePredictor):
                         # Find the indentation level
                         indent = len(line) - len(line.lstrip())
                         # Replace with proper torch.load statement
-                        lines[i] = ' ' * indent + f'model_state_dict = torch.load("{model_path}")'
+                        lines[i] = ' ' * indent + f'model_state_dict = torch.load("{model_path}", map_location=map_location)'
                         break
+                
                 content = '\n'.join(lines)
-                # Also relax strictness if plain call exists
-                content = re.sub(r"\.load_state_dict\(model_state_dict\)", ".load_state_dict(model_state_dict, strict=False)", content)
                 with open(framework_path, "w") as f:
                     f.write(content)
-                print("✅ Patched SPIGA framework.py with line-by-line replacement and strict=False!")
+                print("✅ Patched SPIGA framework.py with line-by-line replacement!")
         else:
             print("⚠️ SPIGA framework file not found")
 
@@ -398,3 +428,68 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         # Model weights will be downloaded automatically by diffusers
         # when the pipeline is first created
         print("✅ Model weights setup complete!")
+
+    def _preserve_eye_color(self, source_pil: Image.Image, result_pil: Image.Image, mode: str = "chroma", feather: int = 12) -> Image.Image:
+        """Preserve eye color by compositing original eyes onto the result.
+        mode: 'chroma' copies a/b channels in LAB; 'rgb' copies full RGB.
+        feather: feather radius in pixels for a soft mask.
+        """
+        try:
+            import mediapipe as mp
+        except Exception as e:
+            print(f"⚠️ mediapipe not available, skipping eye preservation: {e}")
+            return result_pil
+
+        source_rgb = np.array(source_pil.convert("RGB"))
+        result_rgb = np.array(result_pil.convert("RGB"))
+
+        h, w = result_rgb.shape[:2]
+        mp_face_mesh = mp.solutions.face_mesh
+        with mp_face_mesh.FaceMesh(static_image_mode=True, refine_landmarks=True, max_num_faces=1) as face_mesh:
+            results = face_mesh.process(source_rgb)
+        if not results.multi_face_landmarks:
+            print("⚠️ No face landmarks detected; skipping eye preservation")
+            return result_pil
+
+        face_landmarks = results.multi_face_landmarks[0]
+
+        # Indices for eyelids region (MediaPipe Face Mesh)
+        left_eye_idx = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+        right_eye_idx = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466]
+
+        def lm_to_points(indices):
+            pts = []
+            for i in indices:
+                lm = face_landmarks.landmark[i]
+                pts.append([int(lm.x * w), int(lm.y * h)])
+            return np.array(pts, dtype=np.int32)
+
+        left_poly = lm_to_points(left_eye_idx)
+        right_poly = lm_to_points(right_eye_idx)
+
+        # Create binary mask for both eyes
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(mask, [left_poly], 255)
+        cv2.fillPoly(mask, [right_poly], 255)
+
+        if feather < 1:
+            feather = 1
+        # Feather mask edges
+        k = max(1, feather | 1)  # ensure odd
+        mask_blur = cv2.GaussianBlur(mask, (k, k), 0)
+        mask_f = (mask_blur.astype(np.float32) / 255.0)[:, :, None]
+
+        if mode.lower() == "rgb":
+            comp = (mask_f * source_rgb.astype(np.float32) + (1.0 - mask_f) * result_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
+            return Image.fromarray(comp)
+
+        # Default: chroma-only (LAB a/b channels from source)
+        src_lab = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+        res_lab = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+
+        out_lab = res_lab.copy()
+        out_lab[:, :, 1] = mask_f[:, :, 0] * src_lab[:, :, 1] + (1.0 - mask_f[:, :, 0]) * res_lab[:, :, 1]
+        out_lab[:, :, 2] = mask_f[:, :, 0] * src_lab[:, :, 2] + (1.0 - mask_f[:, :, 0]) * res_lab[:, :, 2]
+
+        out_rgb = cv2.cvtColor(out_lab.astype(np.uint8), cv2.COLOR_LAB2RGB)
+        return Image.fromarray(out_rgb)

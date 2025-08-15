@@ -21,13 +21,13 @@ from supabase import create_client, Client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Replicate API configuration
-REPLICATE_API_TOKEN = "r8_DRpnlDQlHbJBHKiAYvQzeYnY70ZDwpD2VP6Uo"
-REPLICATE_BASE_URL = "https://api.replicate.com/v1"
+# Replicate API configuration (use env var; don't hardcode secrets)
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
+REPLICATE_BASE_URL = os.environ.get("REPLICATE_BASE_URL", "https://api.replicate.com/v1")
 
-# Supabase configuration
-SUPABASE_URL = "https://gbtozqgisxjdrjxubftq.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdidG96cWdpc3hqZHJqeHViZnRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NTg3MjMsImV4cCI6MjA2NjMzNDcyM30.k_y_yXVYC7aCR2wWA-cZkzr-y3tjHWxAiBMIWSBc54M"
+# Supabase configuration (use env vars)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 # Initialize Supabase client with correct options
 supabase: Client = create_client(
