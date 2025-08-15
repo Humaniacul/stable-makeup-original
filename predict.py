@@ -62,27 +62,27 @@ class Predictor(BasePredictor):
             from infer_kps import infer_with_params
             result_image = infer_with_params(source_path, reference_path, makeup_intensity)
             
-            # Optional eye color preservation
-            try:
-                if os.environ.get("MAKEUP_PRESERVE_EYES", "1") == "1":
-                    mode = os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "chroma")
-                    feather = int(os.environ.get("MAKEUP_PRESERVE_EYES_FEATHER", "12"))
-                    if isinstance(result_image, Image.Image):
-                        result_image = self._preserve_eye_color(source_img, result_image, mode=mode, feather=feather)
-                    else:
-                        pil_result = Image.fromarray(result_image.astype(np.uint8))
-                        result_image = self._preserve_eye_color(source_img, pil_result, mode=mode, feather=feather)
-            except Exception as e:
-                print(f"⚠️ Eye preservation skipped: {e}")
-
-            # Save result
+            # Save result (with optional eye-color preservation)
             result_path = "/tmp/result.jpg"
-            if isinstance(result_image, Image.Image):
-                result_image.save(result_path)
-            else:
+            if not isinstance(result_image, Image.Image):
                 # Handle numpy array case
                 result_image = Image.fromarray(result_image.astype(np.uint8))
-                result_image.save(result_path)
+
+            # Preserve eye colors by compositing source eyes back onto result
+            try:
+                if os.environ.get("MAKEUP_PRESERVE_EYES", "1") == "1":
+                    feather_px = int(os.environ.get("MAKEUP_PRESERVE_EYES_FEATHER", "18"))
+                    mode = os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "chroma").strip().lower()
+                    result_image = self._preserve_eyes_colors(
+                        source_img,
+                        result_image,
+                        feather_radius_px=max(0, feather_px),
+                        mode=mode,
+                    )
+            except Exception as e:
+                print(f"⚠️ Eye-color preservation skipped due to error: {e}")
+
+            result_image.save(result_path)
             
             print("✅ Stable-Makeup inference completed successfully!")
             return Path(result_path)
@@ -421,6 +421,76 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                     f.write(content)
                 print("✅ Added infer_with_params function")
 
+    def _preserve_eyes_colors(self, source_pil: Image.Image, result_pil: Image.Image, feather_radius_px: int = 18, mode: str = "chroma") -> Image.Image:
+        """Preserve original eye colors by blending the source eye region into the result.
+
+        - mode="chroma": copy hue+saturation from source, keep value from result
+        - mode="rgb": alpha-blend RGB from source
+        """
+        try:
+            source_rgb = np.array(source_pil.convert("RGB"))
+            result_rgb = np.array(result_pil.convert("RGB"))
+
+            # Resize result to source size if needed
+            if source_rgb.shape[:2] != result_rgb.shape[:2]:
+                result_rgb = cv2.resize(result_rgb, (source_rgb.shape[1], source_rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
+
+            mask = self._build_eye_mask_via_haarcascade(source_rgb)
+            if mask is None or int(mask.max()) == 0:
+                return Image.fromarray(result_rgb)
+
+            if feather_radius_px > 0:
+                k = max(1, (feather_radius_px // 2) * 2 + 1)
+                mask = cv2.GaussianBlur(mask, (k, k), sigmaX=feather_radius_px)
+
+            alpha = (mask.astype(np.float32) / 255.0)[..., None]
+
+            if mode == "rgb":
+                blended = (source_rgb.astype(np.float32) * alpha + result_rgb.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
+                return Image.fromarray(blended)
+
+            # Default chroma: blend H and S from source, keep V from result
+            source_hsv = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
+            result_hsv = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
+            for c in (0, 1):  # H, S
+                result_hsv[..., c] = source_hsv[..., c] * alpha[..., 0] + result_hsv[..., c] * (1.0 - alpha[..., 0])
+            blended_rgb = cv2.cvtColor(result_hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
+            return Image.fromarray(blended_rgb)
+        except Exception:
+            return result_pil
+
+    def _build_eye_mask_via_haarcascade(self, image_rgb: np.ndarray) -> np.ndarray:
+        """Detect eyes with OpenCV Haar cascades and return a soft mask (0-255)."""
+        try:
+            gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+            gray = cv2.equalizeHist(gray)
+            mask = np.zeros_like(gray, dtype=np.uint8)
+
+            cascades = [
+                os.path.join(cv2.data.haarcascades, "haarcascade_eye_tree_eyeglasses.xml"),
+                os.path.join(cv2.data.haarcascades, "haarcascade_eye.xml"),
+            ]
+            detections = []
+            for cpath in cascades:
+                if not os.path.exists(cpath):
+                    continue
+                clf = cv2.CascadeClassifier(cpath)
+                det = clf.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, flags=cv2.CASCADE_SCALE_IMAGE, minSize=(20, 20))
+                if len(det) > 0:
+                    detections.extend(det)
+
+            if len(detections) == 0:
+                return mask
+
+            detections = sorted(detections, key=lambda r: r[2] * r[3], reverse=True)[:2]
+            for (x, y, w, h) in detections:
+                cx, cy = x + w // 2, y + h // 2
+                axes = (max(1, int(w * 0.35)), max(1, int(h * 0.35)))
+                cv2.ellipse(mask, (cx, cy), axes, 0, 0, 360, color=255, thickness=-1)
+            return mask
+        except Exception:
+            return np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+
     def copy_model_weights(self, models_dir: str):
         """Copy pre-trained model weights to the expected location"""
         print("📋 Setting up model weights...")
@@ -428,68 +498,3 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
         # Model weights will be downloaded automatically by diffusers
         # when the pipeline is first created
         print("✅ Model weights setup complete!")
-
-    def _preserve_eye_color(self, source_pil: Image.Image, result_pil: Image.Image, mode: str = "chroma", feather: int = 12) -> Image.Image:
-        """Preserve eye color by compositing original eyes onto the result.
-        mode: 'chroma' copies a/b channels in LAB; 'rgb' copies full RGB.
-        feather: feather radius in pixels for a soft mask.
-        """
-        try:
-            import mediapipe as mp
-        except Exception as e:
-            print(f"⚠️ mediapipe not available, skipping eye preservation: {e}")
-            return result_pil
-
-        source_rgb = np.array(source_pil.convert("RGB"))
-        result_rgb = np.array(result_pil.convert("RGB"))
-
-        h, w = result_rgb.shape[:2]
-        mp_face_mesh = mp.solutions.face_mesh
-        with mp_face_mesh.FaceMesh(static_image_mode=True, refine_landmarks=True, max_num_faces=1) as face_mesh:
-            results = face_mesh.process(source_rgb)
-        if not results.multi_face_landmarks:
-            print("⚠️ No face landmarks detected; skipping eye preservation")
-            return result_pil
-
-        face_landmarks = results.multi_face_landmarks[0]
-
-        # Indices for eyelids region (MediaPipe Face Mesh)
-        left_eye_idx = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-        right_eye_idx = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466]
-
-        def lm_to_points(indices):
-            pts = []
-            for i in indices:
-                lm = face_landmarks.landmark[i]
-                pts.append([int(lm.x * w), int(lm.y * h)])
-            return np.array(pts, dtype=np.int32)
-
-        left_poly = lm_to_points(left_eye_idx)
-        right_poly = lm_to_points(right_eye_idx)
-
-        # Create binary mask for both eyes
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.fillPoly(mask, [left_poly], 255)
-        cv2.fillPoly(mask, [right_poly], 255)
-
-        if feather < 1:
-            feather = 1
-        # Feather mask edges
-        k = max(1, feather | 1)  # ensure odd
-        mask_blur = cv2.GaussianBlur(mask, (k, k), 0)
-        mask_f = (mask_blur.astype(np.float32) / 255.0)[:, :, None]
-
-        if mode.lower() == "rgb":
-            comp = (mask_f * source_rgb.astype(np.float32) + (1.0 - mask_f) * result_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
-            return Image.fromarray(comp)
-
-        # Default: chroma-only (LAB a/b channels from source)
-        src_lab = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
-        res_lab = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
-
-        out_lab = res_lab.copy()
-        out_lab[:, :, 1] = mask_f[:, :, 0] * src_lab[:, :, 1] + (1.0 - mask_f[:, :, 0]) * res_lab[:, :, 1]
-        out_lab[:, :, 2] = mask_f[:, :, 0] * src_lab[:, :, 2] + (1.0 - mask_f[:, :, 0]) * res_lab[:, :, 2]
-
-        out_rgb = cv2.cvtColor(out_lab.astype(np.uint8), cv2.COLOR_LAB2RGB)
-        return Image.fromarray(out_rgb)
