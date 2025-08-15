@@ -72,7 +72,7 @@ class Predictor(BasePredictor):
             try:
                 if os.environ.get("MAKEUP_PRESERVE_EYES", "1") == "1":
                     feather_px = int(os.environ.get("MAKEUP_PRESERVE_EYES_FEATHER", "18"))
-                    mode = os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "chroma").strip().lower()
+                    mode = os.environ.get("MAKEUP_PRESERVE_EYES_MODE", "adaptive").strip().lower()
                     result_image = self._preserve_eyes_colors(
                         source_img,
                         result_image,
@@ -422,10 +422,14 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
                 print("✅ Added infer_with_params function")
 
     def _preserve_eyes_colors(self, source_pil: Image.Image, result_pil: Image.Image, feather_radius_px: int = 18, mode: str = "chroma") -> Image.Image:
-        """Preserve original eye colors by blending the source eye region into the result.
+        """Advanced eye color preservation with multiple techniques for best results.
 
-        - mode="chroma": copy hue+saturation from source, keep value from result
-        - mode="rgb": alpha-blend RGB from source
+        Modes:
+        - "chroma": copy hue+saturation from source, keep value from result
+        - "lab": preserve L*a*b* color components more naturally
+        - "iris": focus specifically on iris colors with smart detection
+        - "adaptive": automatically choose best method based on image analysis
+        - "rgb": direct RGB alpha blending
         """
         try:
             source_rgb = np.array(source_pil.convert("RGB"))
@@ -435,29 +439,208 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             if source_rgb.shape[:2] != result_rgb.shape[:2]:
                 result_rgb = cv2.resize(result_rgb, (source_rgb.shape[1], source_rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
 
-            mask = self._build_eye_mask_via_haarcascade(source_rgb)
+            # Get the best available eye mask using multiple detection methods
+            mask = self._build_advanced_eye_mask(source_rgb)
             if mask is None or int(mask.max()) == 0:
+                print("⚠️ No eyes detected, skipping eye preservation")
                 return Image.fromarray(result_rgb)
 
+            # Apply advanced feathering with edge-aware smoothing
             if feather_radius_px > 0:
-                k = max(1, (feather_radius_px // 2) * 2 + 1)
-                mask = cv2.GaussianBlur(mask, (k, k), sigmaX=feather_radius_px)
+                mask = self._apply_advanced_feathering(mask, source_rgb, feather_radius_px)
 
             alpha = (mask.astype(np.float32) / 255.0)[..., None]
+            
+            # Choose the best blending mode
+            if mode == "adaptive":
+                mode = self._choose_best_blending_mode(source_rgb, result_rgb, mask)
+                print(f"🎯 Auto-selected blending mode: {mode}")
 
-            if mode == "rgb":
+            if mode == "lab":
+                return self._blend_lab_color_space(source_rgb, result_rgb, alpha)
+            elif mode == "iris":
+                return self._blend_iris_focused(source_rgb, result_rgb, alpha)
+            elif mode == "rgb":
                 blended = (source_rgb.astype(np.float32) * alpha + result_rgb.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
                 return Image.fromarray(blended)
+            else:  # chroma (default)
+                return self._blend_chroma_enhanced(source_rgb, result_rgb, alpha)
 
-            # Default chroma: blend H and S from source, keep V from result
-            source_hsv = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
-            result_hsv = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
-            for c in (0, 1):  # H, S
-                result_hsv[..., c] = source_hsv[..., c] * alpha[..., 0] + result_hsv[..., c] * (1.0 - alpha[..., 0])
-            blended_rgb = cv2.cvtColor(result_hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
-            return Image.fromarray(blended_rgb)
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Eye preservation error: {e}")
             return result_pil
+
+    def _build_advanced_eye_mask(self, image_rgb: np.ndarray) -> np.ndarray:
+        """Advanced eye detection using multiple methods for best accuracy."""
+        try:
+            # Method 1: Try MediaPipe face landmarks (most accurate)
+            mask = self._build_eye_mask_via_mediapipe(image_rgb)
+            if mask is not None and int(mask.max()) > 0:
+                print("✅ Using MediaPipe eye detection")
+                return mask
+
+            # Method 2: Try improved Haar cascades with multiple scales
+            mask = self._build_eye_mask_via_enhanced_haar(image_rgb)
+            if mask is not None and int(mask.max()) > 0:
+                print("✅ Using enhanced Haar cascade eye detection")
+                return mask
+
+            # Method 3: Fallback to original Haar cascade
+            mask = self._build_eye_mask_via_haarcascade(image_rgb)
+            if mask is not None and int(mask.max()) > 0:
+                print("✅ Using basic Haar cascade eye detection")
+                return mask
+
+            print("⚠️ No eye detection method succeeded")
+            return np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+
+        except Exception as e:
+            print(f"⚠️ Eye detection error: {e}")
+            return np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+
+    def _build_eye_mask_via_mediapipe(self, image_rgb: np.ndarray) -> np.ndarray:
+        """Use MediaPipe to detect precise eye landmarks."""
+        try:
+            # Try to import MediaPipe (might not be available in all environments)
+            import mediapipe as mp
+            
+            mp_face_mesh = mp.solutions.face_mesh
+            face_mesh = mp_face_mesh.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5
+            )
+            
+            results = face_mesh.process(image_rgb)
+            
+            if not results.multi_face_landmarks:
+                return None
+                
+            mask = np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+            
+            for face_landmarks in results.multi_face_landmarks:
+                # Eye landmark indices for MediaPipe
+                left_eye_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+                right_eye_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+                
+                h, w = image_rgb.shape[:2]
+                
+                # Process each eye
+                for eye_indices in [left_eye_indices, right_eye_indices]:
+                    eye_points = []
+                    for idx in eye_indices:
+                        landmark = face_landmarks.landmark[idx]
+                        x = int(landmark.x * w)
+                        y = int(landmark.y * h)
+                        eye_points.append([x, y])
+                    
+                    if len(eye_points) > 3:
+                        eye_points = np.array(eye_points, dtype=np.int32)
+                        cv2.fillPoly(mask, [eye_points], 255)
+                        
+                        # Also add a circular region for better coverage
+                        center = eye_points.mean(axis=0).astype(int)
+                        radius = int(np.max(np.linalg.norm(eye_points - center, axis=1)) * 0.8)
+                        cv2.circle(mask, tuple(center), radius, 255, -1)
+            
+            return mask
+            
+        except ImportError:
+            # MediaPipe not available
+            return None
+        except Exception:
+            return None
+
+    def _build_eye_mask_via_enhanced_haar(self, image_rgb: np.ndarray) -> np.ndarray:
+        """Enhanced Haar cascade detection with multiple scales and filters."""
+        try:
+            gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+            gray = cv2.equalizeHist(gray)
+            mask = np.zeros_like(gray, dtype=np.uint8)
+
+            # More comprehensive cascade list
+            cascades = [
+                "haarcascade_eye_tree_eyeglasses.xml",
+                "haarcascade_eye.xml",
+                "haarcascade_lefteye_2splits.xml",
+                "haarcascade_righteye_2splits.xml"
+            ]
+            
+            all_detections = []
+            
+            for cascade_name in cascades:
+                cascade_path = os.path.join(cv2.data.haarcascades, cascade_name)
+                if not os.path.exists(cascade_path):
+                    continue
+                    
+                clf = cv2.CascadeClassifier(cascade_path)
+                
+                # Try multiple scales for better detection
+                for scale_factor in [1.05, 1.1, 1.2]:
+                    for min_neighbors in [3, 4, 5]:
+                        detections = clf.detectMultiScale(
+                            gray, 
+                            scaleFactor=scale_factor, 
+                            minNeighbors=min_neighbors,
+                            flags=cv2.CASCADE_SCALE_IMAGE,
+                            minSize=(15, 15),
+                            maxSize=(150, 150)
+                        )
+                        all_detections.extend(detections)
+
+            if len(all_detections) == 0:
+                return None
+
+            # Remove duplicate detections using Non-Maximum Suppression
+            all_detections = np.array(all_detections)
+            if len(all_detections) > 0:
+                # Simple NMS: keep detections that don't overlap too much
+                keep = []
+                for i, det in enumerate(all_detections):
+                    x1, y1, w1, h1 = det
+                    overlap = False
+                    for j in keep:
+                        x2, y2, w2, h2 = all_detections[j]
+                        # Calculate intersection over union
+                        ix = max(x1, x2)
+                        iy = max(y1, y2)
+                        iw = min(x1 + w1, x2 + w2) - ix
+                        ih = min(y1 + h1, y2 + h2) - iy
+                        if iw > 0 and ih > 0:
+                            intersection = iw * ih
+                            union = w1 * h1 + w2 * h2 - intersection
+                            if intersection / union > 0.3:  # 30% overlap threshold
+                                overlap = True
+                                break
+                    if not overlap:
+                        keep.append(i)
+                
+                final_detections = all_detections[keep]
+            else:
+                final_detections = all_detections
+
+            # Keep only the 2 largest detections (left and right eye)
+            if len(final_detections) > 2:
+                areas = [w * h for (x, y, w, h) in final_detections]
+                sorted_indices = np.argsort(areas)[::-1]
+                final_detections = final_detections[sorted_indices[:2]]
+
+            # Create elliptical masks for more natural eye shapes
+            for (x, y, w, h) in final_detections:
+                cx, cy = x + w // 2, y + h // 2
+                # Make ellipse more eye-shaped
+                axes = (max(1, int(w * 0.4)), max(1, int(h * 0.3)))
+                cv2.ellipse(mask, (cx, cy), axes, 0, 0, 360, color=255, thickness=-1)
+                
+                # Add a smaller inner ellipse for the iris
+                inner_axes = (max(1, int(w * 0.2)), max(1, int(h * 0.2)))
+                cv2.ellipse(mask, (cx, cy), inner_axes, 0, 0, 360, color=255, thickness=-1)
+
+            return mask if int(mask.max()) > 0 else None
+            
+        except Exception:
+            return None
 
     def _build_eye_mask_via_haarcascade(self, image_rgb: np.ndarray) -> np.ndarray:
         """Detect eyes with OpenCV Haar cascades and return a soft mask (0-255)."""
@@ -490,6 +673,161 @@ def infer_with_params(source_path, reference_path, intensity=1.0):
             return mask
         except Exception:
             return np.zeros(image_rgb.shape[:2], dtype=np.uint8)
+
+    def _apply_advanced_feathering(self, mask: np.ndarray, image_rgb: np.ndarray, feather_radius_px: int) -> np.ndarray:
+        """Apply edge-aware feathering that preserves natural boundaries."""
+        try:
+            # Basic Gaussian blur
+            k = max(1, (feather_radius_px // 2) * 2 + 1)
+            feathered = cv2.GaussianBlur(mask, (k, k), sigmaX=feather_radius_px)
+            
+            # Edge-aware refinement using bilateral filter
+            gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # Reduce feathering near strong edges
+            edge_influence = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+            edge_factor = (255 - edge_influence.astype(np.float32)) / 255.0
+            
+            # Apply edge-aware feathering
+            refined_mask = feathered.astype(np.float32) * edge_factor
+            refined_mask = np.clip(refined_mask, 0, 255).astype(np.uint8)
+            
+            return refined_mask
+        except Exception:
+            # Fallback to basic Gaussian blur
+            k = max(1, (feather_radius_px // 2) * 2 + 1)
+            return cv2.GaussianBlur(mask, (k, k), sigmaX=feather_radius_px)
+
+    def _choose_best_blending_mode(self, source_rgb: np.ndarray, result_rgb: np.ndarray, mask: np.ndarray) -> str:
+        """Automatically choose the best blending mode based on image analysis."""
+        try:
+            # Extract eye regions for analysis
+            eye_mask = mask > 128
+            if not np.any(eye_mask):
+                return "chroma"
+            
+            source_eyes = source_rgb[eye_mask]
+            result_eyes = result_rgb[eye_mask]
+            
+            # Calculate color differences
+            rgb_diff = np.mean(np.abs(source_eyes.astype(int) - result_eyes.astype(int)))
+            
+            # Convert to other color spaces for analysis
+            source_hsv = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2HSV)
+            result_hsv = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2HSV)
+            
+            source_eyes_hsv = source_hsv[eye_mask]
+            result_eyes_hsv = result_hsv[eye_mask]
+            
+            # Calculate hue difference
+            hue_diff = np.mean(np.abs(source_eyes_hsv[:, 0].astype(int) - result_eyes_hsv[:, 0].astype(int)))
+            
+            # Decision logic
+            if rgb_diff > 80:  # Large color change - use LAB
+                return "lab"
+            elif hue_diff > 30:  # Significant hue change - use chroma
+                return "chroma"
+            elif rgb_diff > 40:  # Medium change - use iris-focused
+                return "iris"
+            else:  # Small change - use enhanced chroma
+                return "chroma"
+                
+        except Exception:
+            return "chroma"  # Safe fallback
+
+    def _blend_lab_color_space(self, source_rgb: np.ndarray, result_rgb: np.ndarray, alpha: np.ndarray) -> Image.Image:
+        """Blend in LAB color space for more perceptually accurate results."""
+        try:
+            # Convert to LAB color space
+            source_lab = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+            result_lab = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+            
+            # Blend all channels in LAB space
+            blended_lab = source_lab * alpha + result_lab * (1.0 - alpha)
+            
+            # Convert back to RGB
+            blended_lab = np.clip(blended_lab, 0, 255).astype(np.uint8)
+            blended_rgb = cv2.cvtColor(blended_lab, cv2.COLOR_LAB2RGB)
+            
+            return Image.fromarray(blended_rgb)
+        except Exception:
+            # Fallback to chroma blending
+            return self._blend_chroma_enhanced(source_rgb, result_rgb, alpha)
+
+    def _blend_iris_focused(self, source_rgb: np.ndarray, result_rgb: np.ndarray, alpha: np.ndarray) -> Image.Image:
+        """Focus specifically on preserving iris colors with enhanced detection."""
+        try:
+            # Create a more focused iris mask
+            iris_mask = self._create_iris_focused_mask(alpha, source_rgb)
+            
+            # Use LAB blending for iris regions
+            source_lab = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+            result_lab = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+            
+            # Stronger blending for iris areas
+            enhanced_alpha = iris_mask * 0.9 + alpha * (1 - iris_mask) * 0.6
+            
+            blended_lab = source_lab * enhanced_alpha + result_lab * (1.0 - enhanced_alpha)
+            blended_lab = np.clip(blended_lab, 0, 255).astype(np.uint8)
+            blended_rgb = cv2.cvtColor(blended_lab, cv2.COLOR_LAB2RGB)
+            
+            return Image.fromarray(blended_rgb)
+        except Exception:
+            return self._blend_chroma_enhanced(source_rgb, result_rgb, alpha)
+
+    def _create_iris_focused_mask(self, alpha: np.ndarray, source_rgb: np.ndarray) -> np.ndarray:
+        """Create a mask that focuses on iris regions within the eye mask."""
+        try:
+            eye_mask = (alpha[:, :, 0] > 0.1).astype(np.uint8) * 255
+            
+            # Find contours of eye regions
+            contours, _ = cv2.findContours(eye_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            iris_mask = np.zeros_like(alpha[:, :, 0])
+            
+            for contour in contours:
+                # Get bounding box of eye region
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Create a smaller ellipse for the iris (center 60% of the eye)
+                cx, cy = x + w // 2, y + h // 2
+                iris_w, iris_h = int(w * 0.3), int(h * 0.3)
+                
+                cv2.ellipse(iris_mask, (cx, cy), (iris_w, iris_h), 0, 0, 360, 1.0, -1)
+            
+            return iris_mask
+        except Exception:
+            return alpha[:, :, 0]
+
+    def _blend_chroma_enhanced(self, source_rgb: np.ndarray, result_rgb: np.ndarray, alpha: np.ndarray) -> Image.Image:
+        """Enhanced chroma blending with better color preservation."""
+        try:
+            # Convert to HSV for chroma blending
+            source_hsv = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
+            result_hsv = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
+            
+            # Enhanced blending: preserve H and S more strongly, allow some V blending
+            alpha_2d = alpha[:, :, 0]
+            
+            # Preserve hue completely
+            result_hsv[:, :, 0] = source_hsv[:, :, 0] * alpha_2d + result_hsv[:, :, 0] * (1.0 - alpha_2d)
+            
+            # Preserve saturation with slight influence from result
+            result_hsv[:, :, 1] = source_hsv[:, :, 1] * alpha_2d * 0.9 + result_hsv[:, :, 1] * (1.0 - alpha_2d * 0.9)
+            
+            # Allow some value blending for natural lighting
+            result_hsv[:, :, 2] = source_hsv[:, :, 2] * alpha_2d * 0.7 + result_hsv[:, :, 2] * (1.0 - alpha_2d * 0.7)
+            
+            # Convert back to RGB
+            result_hsv = np.clip(result_hsv, 0, 255).astype(np.uint8)
+            blended_rgb = cv2.cvtColor(result_hsv, cv2.COLOR_HSV2RGB)
+            
+            return Image.fromarray(blended_rgb)
+        except Exception:
+            # Final fallback to simple RGB blending
+            blended = (source_rgb.astype(np.float32) * alpha + result_rgb.astype(np.float32) * (1.0 - alpha)).astype(np.uint8)
+            return Image.fromarray(blended)
 
     def copy_model_weights(self, models_dir: str):
         """Copy pre-trained model weights to the expected location"""
