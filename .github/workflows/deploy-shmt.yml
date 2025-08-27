@@ -2,7 +2,7 @@ name: Deploy SHMT to Replicate
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'shmt-replicate/**'
   workflow_dispatch:
