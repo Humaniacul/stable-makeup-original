@@ -12,7 +12,6 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 from omegaconf import OmegaConf
-from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import nullcontext
 
@@ -190,7 +189,9 @@ class Predictor(BasePredictor):
         print("Setting up SHMT...")
         
         # Setup seed for reproducibility
-        seed_everything(42)
+        torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
         
         # Download weights
         self.weight_paths = setup_shmt_weights()
