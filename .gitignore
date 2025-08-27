@@ -1,11 +1,3 @@
-# Virtual environments
-backend/venv*/
-backend/beautify-env/
-stablemakeup-env/
-venv/
-env/
-ENV/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -27,11 +19,26 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Node modules
-node_modules/
+# PyTorch
+*.pth
+*.pt
 
-# OS files
+# Models (but allow Stable-Makeup weights)
+models/
+!models/stablemakeup/
+!models/stablemakeup/*.bin
+!models/stablemakeup/config.json
+weights/
+checkpoints/
+
+# Temporary files
+temp_*
+*.tmp
+*.log
+
+# OS
 .DS_Store
 Thumbs.db
 
@@ -41,63 +48,8 @@ Thumbs.db
 *.swp
 *.swo
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Docker
+.dockerignore
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Large files and compiled assets
-*.dll
-*.pyd
-*.exe
-*.zip
-*.tar.gz
-
-# Expo
-.expo/
-dist/
-web-build/
-
-# React Native
-# Android
-android/app/build/
-android/build/
-android/.gradle/
-android/local.properties
-
-# iOS
-ios/build/
-ios/Pods/
-ios/.xcode.proj/
+# Git
+.git/
