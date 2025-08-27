@@ -16,11 +16,17 @@ from torch import autocast
 from contextlib import nullcontext
 
 # Add SHMT to path for imports
-sys.path.append("SHMT")
+sys.path.insert(0, "SHMT")
 
 # Import SHMT modules
-from ldm.util import instantiate_from_config
-from ldm.models.diffusion.ddim_test import DDIMSampler
+try:
+    from ldm.util import instantiate_from_config
+    from ldm.models.diffusion.ddim_test import DDIMSampler
+except ImportError as e:
+    print(f"Error importing SHMT modules: {e}")
+    print("Current sys.path:", sys.path)
+    print("SHMT directory contents:", os.listdir("SHMT") if os.path.exists("SHMT") else "SHMT not found")
+    raise
 
 
 def download_file(url, output_path):
