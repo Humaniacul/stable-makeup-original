@@ -1,0 +1,27 @@
+build:
+  gpu: true
+  python_version: "3.10"
+  python_packages:
+    - torch==2.0.1
+    - torchvision==0.15.2
+    - numpy==1.26.4
+    - Pillow==10.4.0
+    - opencv-python-headless==4.10.0.84
+    - gdown==5.1.0
+    - scipy==1.11.4
+    - scikit-image==0.22.0
+    - einops==0.7.0
+    - timm==0.9.16
+    - tqdm==4.66.5
+    - requests==2.31.0
+  system_packages:
+    - libgl1-mesa-glx
+    - libglib2.0-0
+    - libsm6
+    - libxext6
+    - libxrender-dev
+    - libgomp1
+    - ffmpeg
+    - git
+
+predict: "predict.py:Predictor"

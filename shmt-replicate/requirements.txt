@@ -1,0 +1,11 @@
+torch==2.1.2+cpu -f https://download.pytorch.org/whl/cpu
+torchvision==0.16.2+cpu -f https://download.pytorch.org/whl/cpu
+numpy==1.26.4
+pillow==10.4.0
+opencv-python-headless==4.10.0.84
+gdown==5.1.0
+scipy==1.11.4
+scikit-image==0.22.0
+einops==0.7.0
+timm==0.9.16
+tqdm==4.66.5
