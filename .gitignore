@@ -53,3 +53,6 @@ Thumbs.db
 
 # Git
 .git/
+# ignore local env and dependencies
+.env
+node_modules/
