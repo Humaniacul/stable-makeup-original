@@ -15,18 +15,17 @@ from omegaconf import OmegaConf
 from torch import autocast
 from contextlib import nullcontext
 
-# Add SHMT to path for imports
-sys.path.insert(0, "SHMT")
-
-# Import SHMT modules
-try:
-    from ldm.util import instantiate_from_config
-    from ldm.models.diffusion.ddim_test import DDIMSampler
-except ImportError as e:
-    print(f"Error importing SHMT modules: {e}")
-    print("Current sys.path:", sys.path)
-    print("SHMT directory contents:", os.listdir("SHMT") if os.path.exists("SHMT") else "SHMT not found")
-    raise
+"""Utility to ensure SHMT's ldm package is available and importable."""
+def ensure_shmt_code():
+    shmt_dir = FsPath("SHMT")
+    if not shmt_dir.exists() or not (shmt_dir / "ldm").exists():
+        print("SHMT repository not found. Cloning...")
+        subprocess.run([
+            "git", "clone", "--depth", "1",
+            "https://github.com/snowfallingplum/shmt.git", "SHMT"
+        ], check=True)
+    if "SHMT" not in sys.path:
+        sys.path.insert(0, "SHMT")
 
 
 def download_file(url, output_path):
@@ -83,9 +82,20 @@ def setup_shmt_weights():
     # Download VQ-f4 autoencoder
     vqf4_dir = models_dir / "vq-f4"
     vqf4_dir.mkdir(exist_ok=True)
-    vqf4_path = vqf4_dir / "model.ckpt"
+    # The official zip contains files under logs/..; try common names
+    candidate_ckpts = [
+        vqf4_dir / "model.ckpt",
+        vqf4_dir / "vq-f4.ckpt",
+        vqf4_dir / "vq-f4-encoder.ckpt",
+    ]
+    vqf4_path = None
     
-    if not vqf4_path.exists():
+    for cand in candidate_ckpts:
+        if cand.exists():
+            vqf4_path = cand
+            break
+
+    if vqf4_path is None:
         print("Downloading VQ-f4 autoencoder...")
         # Download from LDM official release
         vqf4_zip = models_dir / "vq-f4.zip"
@@ -98,11 +108,27 @@ def setup_shmt_weights():
         
         # Clean up zip
         vqf4_zip.unlink()
+
+        # Recompute path after extraction
+        for cand in candidate_ckpts:
+            if cand.exists():
+                vqf4_path = cand
+                break
+
+    if vqf4_path is None:
+        # As last resort, search recursively
+        for root, _, files in os.walk(vqf4_dir):
+            for f in files:
+                if f.endswith('.ckpt'):
+                    vqf4_path = FsPath(root) / f
+                    break
+            if vqf4_path is not None:
+                break
     
     return {
         'h0_path': str(h0_path),
         'h4_path': str(h4_path), 
-        'vqf4_path': str(vqf4_path)
+        'vqf4_path': str(vqf4_path) if vqf4_path is not None else ""
     }
 
 
@@ -194,6 +220,13 @@ class Predictor(BasePredictor):
         """Download and setup SHMT weights and models"""
         print("Setting up SHMT...")
         
+        # Ensure SHMT code is present and importable
+        ensure_shmt_code()
+        # Lazy import after ensuring code exists
+        global instantiate_from_config, DDIMSampler
+        from ldm.util import instantiate_from_config
+        from ldm.models.diffusion.ddim_test import DDIMSampler
+
         # Setup seed for reproducibility
         torch.manual_seed(42)
         if torch.cuda.is_available():
