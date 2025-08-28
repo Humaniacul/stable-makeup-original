@@ -30,5 +30,7 @@ build:
     - libgomp1
     - ffmpeg
     - git
+  run:
+    - git clone --depth 1 https://github.com/snowfallingplum/shmt.git SHMT
 
 predict: "predict.py:Predictor"
