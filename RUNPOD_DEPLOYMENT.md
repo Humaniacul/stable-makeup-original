@@ -12,12 +12,12 @@ This repository is now configured for **RunPod Serverless** deployment only.
 
 ### Option 2: Docker Hub + GitHub Actions
 1. **Set GitHub Secrets**:
-   - `DOCKERHUB_USERNAME`: Your Docker Hub username
-   - `DOCKERHUB_TOKEN`: Your Docker Hub access token
+   - `DOCKER_USERNAME`: Your Docker Hub username
+   - `DOCKER_PASSWORD`: Your Docker Hub password or access token
 
 2. **Push to master** → Auto-builds Docker image → Manual deploy on RunPod
 
-3. **Update RunPod endpoint** with new image: `yourusername/shmt-runpod:latest`
+3. **Update RunPod endpoint** with new image: `${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest`
 
 ## Repository Structure
 
