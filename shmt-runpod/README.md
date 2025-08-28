@@ -44,3 +44,4 @@ Notes
 - For production, pin weights in a persistent volume or baked image to avoid cold download.
 
 
+# Build timestamp: Thu Aug 28 16:07:55 EEST 2025
