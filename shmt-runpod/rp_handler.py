@@ -161,78 +161,96 @@ def init_models():
 
 
 def handler(event):
-    models = init_models()
-    device = models["device"]
-    h0 = models["h0"]
-    h0_sampler = models["h0_sampler"]
+    try:
+        print(f"Handler called with event: {event}")
+        models = init_models()
+        device = models["device"]
+        h0 = models["h0"]
+        h0_sampler = models["h0_sampler"]
 
-    inp = event.get("input", {})
-    source_url = inp.get("source_url")
-    reference_url = inp.get("reference_url")
-    ddim_steps = int(inp.get("ddim_steps", 50))
-    guidance_scale = float(inp.get("guidance_scale", 1.0))
+        inp = event.get("input", {})
+        source_url = inp.get("source_url")
+        reference_url = inp.get("reference_url")
+        ddim_steps = min(100, max(1, int(inp.get("ddim_steps", 50))))
+        guidance_scale = max(0.1, min(3.0, float(inp.get("guidance_scale", 1.0))))
 
-    if not source_url or not reference_url:
-        return {"error": "source_url and reference_url are required"}
+        if not source_url or not reference_url:
+            return {"error": "source_url and reference_url are required"}
+        
+        print(f"Processing: source={source_url}, ref={reference_url}, steps={ddim_steps}")
+    except Exception as e:
+        return {"error": f"Setup failed: {str(e)}"}
 
-    with tempfile.TemporaryDirectory() as td:
-        td = FsPath(td)
-        src_path = td / "src.png"
-        ref_path = td / "ref.png"
-        download_file(source_url, src_path)
-        download_file(reference_url, ref_path)
-        src_img = Image.open(src_path).convert('RGB')
-        ref_img = Image.open(ref_path).convert('RGB')
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            td = FsPath(td)
+            src_path = td / "src.png"
+            ref_path = td / "ref.png"
+            print("Downloading images...")
+            download_file(source_url, src_path)
+            download_file(reference_url, ref_path)
+            src_img = Image.open(src_path).convert('RGB')
+            ref_img = Image.open(ref_path).convert('RGB')
+            print(f"Images loaded: src={src_img.size}, ref={ref_img.size}")
 
-    source_tensor = preprocess_image(src_img).to(device)
-    ref_tensor = preprocess_image(ref_img).to(device)
-    src_seg = generate_simple_segmentation(src_img.resize((256, 256)))
-    ref_seg = generate_simple_segmentation(ref_img.resize((256, 256)))
-    src_seg_tensor = torch.from_numpy(src_seg).float().unsqueeze(0).unsqueeze(0).to(device)
+        print("Preprocessing...")
+        source_tensor = preprocess_image(src_img).to(device)
+        ref_tensor = preprocess_image(ref_img).to(device)
+        src_seg = generate_simple_segmentation(src_img.resize((256, 256)))
+        ref_seg = generate_simple_segmentation(ref_img.resize((256, 256)))
+        src_seg_tensor = torch.from_numpy(src_seg).float().unsqueeze(0).unsqueeze(0).to(device)
 
-    with torch.no_grad():
-        source_face = source_tensor
-        ref_face = ref_tensor
-        source_face_gray = torch.mean(source_face, dim=1, keepdim=True)
-        source_bg = source_tensor
+        print("Running inference...")
+        with torch.no_grad():
+            source_face = source_tensor
+            ref_face = ref_tensor
+            source_face_gray = torch.mean(source_face, dim=1, keepdim=True)
+            source_bg = source_tensor
 
-        source_HF_0_down4 = F.pixel_unshuffle(source_face_gray, downscale_factor=4)
-        source_HF = torch.cat([source_HF_0_down4, source_HF_0_down4], dim=1)
-        ref_LF_64 = F.pixel_unshuffle(ref_face, downscale_factor=4)
-        source_face_seg_64 = F.interpolate(src_seg_tensor, size=(64, 64), mode='bilinear')
+            source_HF_0_down4 = F.pixel_unshuffle(source_face_gray, downscale_factor=4)
+            source_HF = torch.cat([source_HF_0_down4, source_HF_0_down4], dim=1)
+            ref_LF_64 = F.pixel_unshuffle(ref_face, downscale_factor=4)
+            source_face_seg_64 = F.interpolate(src_seg_tensor, size=(64, 64), mode='bilinear')
 
-        enc_bg = h0.encode_first_stage(source_bg)
-        z_bg = h0.get_first_stage_encoding(enc_bg).detach()
-        enc_ref = h0.encode_first_stage(ref_face)
-        z_ref_LF = h0.get_first_stage_encoding(enc_ref).detach()
+            enc_bg = h0.encode_first_stage(source_bg)
+            z_bg = h0.get_first_stage_encoding(enc_bg).detach()
+            enc_ref = h0.encode_first_stage(ref_face)
+            z_ref_LF = h0.get_first_stage_encoding(enc_ref).detach()
 
-        test_model_kwargs = {
-            'z_bg': z_bg,
-            'source_HF': source_HF,
-            'z_ref_LF': z_ref_LF,
-            'ref_LF_64': ref_LF_64,
-            'source_face_seg_64': source_face_seg_64,
-            'source_seg_onehot': src_seg_tensor,
-            'ref_seg_onehot': src_seg_tensor
-        }
-        uc = None
-        shape = [3, 64, 64]
-        samples_ddim, _ = h0_sampler.sample(
-            S=ddim_steps,
-            batch_size=1,
-            shape=shape,
-            verbose=False,
-            unconditional_guidance_scale=guidance_scale,
-            unconditional_conditioning=uc,
-            eta=0.0,
-            test_model_kwargs=test_model_kwargs
-        )
-        x_samples_ddim = h0.decode_first_stage(samples_ddim)
-        result = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-        result_np = result[0].cpu().permute(1, 2, 0).numpy()
-        result_img = Image.fromarray((result_np * 255).astype(np.uint8))
+            test_model_kwargs = {
+                'z_bg': z_bg,
+                'source_HF': source_HF,
+                'z_ref_LF': z_ref_LF,
+                'ref_LF_64': ref_LF_64,
+                'source_face_seg_64': source_face_seg_64,
+                'source_seg_onehot': src_seg_tensor,
+                'ref_seg_onehot': src_seg_tensor
+            }
+            uc = None
+            shape = [3, 64, 64]
+            samples_ddim, _ = h0_sampler.sample(
+                S=ddim_steps,
+                batch_size=1,
+                shape=shape,
+                verbose=False,
+                unconditional_guidance_scale=guidance_scale,
+                unconditional_conditioning=uc,
+                eta=0.0,
+                test_model_kwargs=test_model_kwargs
+            )
+            x_samples_ddim = h0.decode_first_stage(samples_ddim)
+            result = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+            result_np = result[0].cpu().permute(1, 2, 0).numpy()
+            result_img = Image.fromarray((result_np * 255).astype(np.uint8))
 
-    return {"image_base64": pil_to_b64(result_img)}
+        print("Inference complete!")
+        return {"image_base64": pil_to_b64(result_img)}
+    
+    except Exception as e:
+        print(f"Inference error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Inference failed: {str(e)}"}
 
 
 runpod.serverless.start({"handler": handler})

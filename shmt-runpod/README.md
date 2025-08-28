@@ -22,7 +22,7 @@ Deploy via RunPod GitHub Integration
 ------------------------------------
 1. Connect GitHub in RunPod Console → Settings → Connections → GitHub → Connect.
 2. Create Serverless → New Endpoint → Custom Source → GitHub Repo.
-3. Select this repo/branch. Dockerfile path: `shmt-runpod/Dockerfile`.
+3. Select this repo/branch. Build context: `shmt-runpod` (important!).
 4. Create Endpoint. Monitor build under Builds.
 5. Test with JSON body:
 

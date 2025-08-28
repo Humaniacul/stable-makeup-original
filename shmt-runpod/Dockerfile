@@ -11,14 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR ${WORKDIR}
 
-COPY shmt-runpod/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN python3 -m pip install --upgrade pip && \
     pip install -r /tmp/requirements.txt
 
 # Pre-clone SHMT for faster cold starts
 RUN git clone --depth 1 https://github.com/snowfallingplum/shmt.git SHMT || true
 
-COPY shmt-runpod/rp_handler.py /workspace/rp_handler.py
+COPY rp_handler.py /workspace/rp_handler.py
 
 CMD ["python3", "-u", "/workspace/rp_handler.py"]
 
