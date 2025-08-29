@@ -46,9 +46,16 @@ jobs:
       run: |
         echo "🚀 Docker image built and pushed successfully!"
         echo "🔄 Updating RunPod endpoint..."
+        echo "Endpoint ID: ${{ vars.RUNPOD_ENDPOINT_ID }}"
+        
+        # First, let's verify the endpoint exists
+        echo "🔍 Verifying endpoint exists..."
+        VERIFY_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
+          "https://api.runpod.io/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}")
+        echo "Verify Response: $VERIFY_RESPONSE"
         
         # Update RunPod endpoint with new Docker image
-        RESPONSE=$(curl -s -X PATCH "https://api.runpod.ai/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
+        RESPONSE=$(curl -s -X PATCH "https://api.runpod.io/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
           -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d '{"docker_image": "${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"}')
