@@ -48,7 +48,13 @@ jobs:
         echo "🔄 Updating RunPod endpoint..."
         echo "Endpoint ID: ${{ vars.RUNPOD_ENDPOINT_ID }}"
         
-        # First, let's verify the endpoint exists
+        # First, let's list all endpoints to see what's available
+        echo "🔍 Listing all endpoints..."
+        LIST_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
+          "https://api.runpod.io/v2/endpoints")
+        echo "All Endpoints: $LIST_RESPONSE"
+        
+        # Then verify the specific endpoint exists
         echo "🔍 Verifying endpoint exists..."
         VERIFY_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
           "https://api.runpod.io/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}")
