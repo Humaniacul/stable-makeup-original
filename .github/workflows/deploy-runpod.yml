@@ -129,7 +129,7 @@ jobs:
           TEMPLATE_DETAILS=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"query": "query($id: ID!) { podTemplate(id: $id) { id name imageName dockerArgs containerDiskInGb volumeInGb env { key value } } }", "variables": {"id": "'"${TEMPLATE_ID}"'"}}' \
+            -d '{"query": "query($id: String!) { podTemplate(id: $id) { id name imageName dockerArgs containerDiskInGb volumeInGb env { key value } } }", "variables": {"id": "'"${TEMPLATE_ID}"'"}}' \
             "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
           echo "Template Details: $TEMPLATE_DETAILS"
 
