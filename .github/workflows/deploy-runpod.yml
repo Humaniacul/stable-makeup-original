@@ -110,27 +110,42 @@ jobs:
           "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
         echo "Mutations: $INTROSPECT_MUTATIONS"
 
-        # Attempt to update the template image via GraphQL (try common field names)
+        # Attempt to update the template image via GraphQL by fetching template details and resubmitting SaveTemplateInput
         if [ -n "$TEMPLATE_ID" ] && [ "$TEMPLATE_ID" != "null" ]; then
-          echo "🔄 Updating template image via GraphQL (imageName)..."
+          echo "🔄 Fetching template details for ${TEMPLATE_ID}..."
+          TEMPLATE_DETAILS=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"query": "query($id: ID!) { template(id: $id) { id name imageName dockerArgs containerDiskInGb volumeInGb env { key value } } }", "variables": {"id": "'"${TEMPLATE_ID}"'"}}' \
+            "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+          echo "Template Details: $TEMPLATE_DETAILS"
+
+          # Build variables JSON for saveTemplate with updated imageName and existing required fields
+          NEW_IMAGE="${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }}"
+          echo "$TEMPLATE_DETAILS" | jq --arg img "$NEW_IMAGE" '{
+            query: "mutation($input: SaveTemplateInput!) { saveTemplate(input: $input) { id name } }",
+            variables: {
+              input: {
+                id: .data.template.id,
+                name: .data.template.name,
+                imageName: $img,
+                dockerArgs: .data.template.dockerArgs,
+                containerDiskInGb: .data.template.containerDiskInGb,
+                volumeInGb: .data.template.volumeInGb,
+                env: (.data.template.env // [])
+              }
+            }
+          }' > payload.json
+
+          echo "🔄 Submitting saveTemplate with updated imageName..."
           UPDATE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{\"query\": \"mutation { saveTemplate(input: { id: \\\"${TEMPLATE_ID}\\\", imageName: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }}\\\" }) { id name } }\"}" \
+            --data-binary @payload.json \
             "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
-          echo "GraphQL Update Response (imageName): $UPDATE_RESPONSE"
-
-          if echo "$UPDATE_RESPONSE" | grep -q 'errors'; then
-            echo "🔁 Retrying with field 'dockerImage'..."
-            UPDATE_RESPONSE=$(curl -s -X POST \
-              -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
-              -H "Content-Type: application/json" \
-              -d "{\"query\": \"mutation { saveTemplate(input: { id: \\\"${TEMPLATE_ID}\\\", dockerImage: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }}\\\" }) { id name } }\"}" \
-              "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
-            echo "GraphQL Update Response (dockerImage): $UPDATE_RESPONSE"
-          fi
+          echo "GraphQL Update Response: $UPDATE_RESPONSE"
         else
-          echo "⚠️ Could not resolve templateId for endpoint ${ { secrets.RUNPOD_ENDPOINT_ID } }"
+          echo "⚠️ Could not resolve templateId for endpoint ${{ secrets.RUNPOD_ENDPOINT_ID }}"
         fi
         
         # Final status
