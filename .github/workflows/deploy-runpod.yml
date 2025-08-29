@@ -78,6 +78,25 @@ jobs:
           "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}/run")
         echo "Run Test Response: $RUN_RESPONSE"
         
+        # Try to update the endpoint via GraphQL mutation
+        echo "🔄 Attempting to update endpoint via GraphQL..."
+        UPDATE_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d "{\"query\": \"mutation { updateEndpoint(id: \\\"${{ secrets.RUNPOD_ENDPOINT_ID }}\\\", input: { dockerImage: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest\\\" }) { id name } }\"}" \
+          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+        echo "GraphQL Update Response: $UPDATE_RESPONSE"
+        
+        # Check if update was successful
+        if echo "$UPDATE_RESPONSE" | grep -q '"errors":null' && echo "$UPDATE_RESPONSE" | grep -q '"data"'; then
+          echo "✅ RunPod endpoint updated successfully via GraphQL!"
+        else
+          echo "❌ Failed to update RunPod endpoint via GraphQL"
+          echo "Response: $UPDATE_RESPONSE"
+          echo "⚠️ You may need to update the Docker image manually in RunPod console"
+          echo "📦 Image to use: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"
+        fi
+        
     - name: Summary
       run: |
         echo "✅ SHMT RunPod deployment pipeline completed!"
