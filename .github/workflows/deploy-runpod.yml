@@ -46,7 +46,8 @@ jobs:
       run: |
         echo "🚀 Docker image built and pushed successfully!"
         echo "🔄 Updating RunPod endpoint..."
-        echo "Endpoint ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}"
+        echo "Endpoint ID (provided): ${{ secrets.RUNPOD_ENDPOINT_ID }}"
+        echo "Endpoint Name (optional): ${{ secrets.RUNPOD_ENDPOINT_NAME }}"
         echo "Image tags: latest and ${{ github.sha }}"
         
         # Test API key first
@@ -64,18 +65,30 @@ jobs:
           "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
         echo "GraphQL Endpoints: $GRAPHQL_RESPONSE"
 
+        # Resolve endpoint ID by name if provided; else use provided ID
+        ENDPOINT_NAME="${{ secrets.RUNPOD_ENDPOINT_NAME }}"
+        PROVIDED_ID="${{ secrets.RUNPOD_ENDPOINT_ID }}"
+        RESOLVED_ID=$(echo "$GRAPHQL_RESPONSE" | jq -r --arg name "$ENDPOINT_NAME" '.data.myself.endpoints[] | select(.name==$name) | .id')
+        if [ -n "$RESOLVED_ID" ] && [ "$RESOLVED_ID" != "null" ]; then
+          ENDPOINT_ID="$RESOLVED_ID"
+          echo "Resolved Endpoint ID from name: $ENDPOINT_ID"
+        else
+          ENDPOINT_ID="$PROVIDED_ID"
+          echo "Using provided Endpoint ID: $ENDPOINT_ID"
+        fi
+
         # Install jq for JSON parsing
         sudo apt-get update -y >/dev/null 2>&1 || true
         sudo apt-get install -y jq >/dev/null 2>&1 || true
 
         # Extract templateId for our endpoint
-        TEMPLATE_ID=$(echo "$GRAPHQL_RESPONSE" | jq -r '.data.myself.endpoints[] | select(.id=="'${{ secrets.RUNPOD_ENDPOINT_ID }}'") | .templateId')
+        TEMPLATE_ID=$(echo "$GRAPHQL_RESPONSE" | jq -r --arg id "$ENDPOINT_ID" '.data.myself.endpoints[] | select(.id==$id) | .templateId')
         echo "Resolved templateId: ${TEMPLATE_ID}"
         
         # Try simple HTTP API for serverless
         echo "🔍 Trying serverless API..."
         SERVERLESS_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
-          "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}")
+          "https://api.runpod.io/v2/${ENDPOINT_ID}")
         echo "Serverless Response: $SERVERLESS_RESPONSE"
         
         # Try direct endpoint run to see if it exists
@@ -84,7 +97,7 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d '{"input": {"test": "connection"}}' \
-          "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}/run")
+          "https://api.runpod.io/v2/${ENDPOINT_ID}/run")
         echo "Run Test Response: $RUN_RESPONSE"
         
         # Introspect GraphQL schema to find correct fields for updating image
@@ -145,7 +158,7 @@ jobs:
             "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
           echo "GraphQL Update Response: $UPDATE_RESPONSE"
         else
-          echo "⚠️ Could not resolve templateId for endpoint ${{ secrets.RUNPOD_ENDPOINT_ID }}"
+          echo "⚠️ Could not resolve templateId for endpoint ${ENDPOINT_ID}"
         fi
         
         # Final status
