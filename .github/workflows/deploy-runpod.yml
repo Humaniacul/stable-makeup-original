@@ -78,6 +78,29 @@ jobs:
           "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}/run")
         echo "Run Test Response: $RUN_RESPONSE"
         
+        # Introspect GraphQL schema to find correct fields for updating image
+        echo "🔎 Introspecting GraphQL schema (TemplateInput, EndpointInput, Mutation fields)..."
+        INTROSPECT_TEMPLATE=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"query": "{ __type(name: \"TemplateInput\") { name inputFields { name type { kind name ofType { name kind } } } } }"}' \
+          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+        echo "TemplateInput: $INTROSPECT_TEMPLATE"
+
+        INTROSPECT_ENDPOINT=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"query": "{ __type(name: \"EndpointInput\") { name inputFields { name type { kind name ofType { name kind } } } } }"}' \
+          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+        echo "EndpointInput: $INTROSPECT_ENDPOINT"
+
+        INTROSPECT_MUTATIONS=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"query": "{ __schema { mutationType { name fields { name args { name type { kind name ofType { name kind } } } } } } }"}' \
+          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+        echo "Mutations: $INTROSPECT_MUTATIONS"
+
         # Try to update the endpoint via GraphQL mutation
         echo "🔄 Attempting to update endpoint via GraphQL..."
         UPDATE_RESPONSE=$(curl -s -X POST \
