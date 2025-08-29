@@ -47,6 +47,7 @@ jobs:
         echo "🚀 Docker image built and pushed successfully!"
         echo "🔄 Updating RunPod endpoint..."
         echo "Endpoint ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}"
+        echo "Image tags: latest and ${{ github.sha }}"
         
         # Test API key first
         echo "🔍 Testing API key..."
@@ -59,9 +60,17 @@ jobs:
         GRAPHQL_RESPONSE=$(curl -s -X POST \
           -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
           -H "Content-Type: application/json" \
-          -d '{"query": "query { myself { serverlessDiscount { discountFactor } endpoints { id name } } }"}' \
+          -d '{"query": "query { myself { endpoints { id name templateId } } }"}' \
           "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
         echo "GraphQL Endpoints: $GRAPHQL_RESPONSE"
+
+        # Install jq for JSON parsing
+        sudo apt-get update -y >/dev/null 2>&1 || true
+        sudo apt-get install -y jq >/dev/null 2>&1 || true
+
+        # Extract templateId for our endpoint
+        TEMPLATE_ID=$(echo "$GRAPHQL_RESPONSE" | jq -r '.data.myself.endpoints[] | select(.id=="'${{ secrets.RUNPOD_ENDPOINT_ID }}'") | .templateId')
+        echo "Resolved templateId: ${TEMPLATE_ID}"
         
         # Try simple HTTP API for serverless
         echo "🔍 Trying serverless API..."
@@ -101,24 +110,32 @@ jobs:
           "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
         echo "Mutations: $INTROSPECT_MUTATIONS"
 
-        # Try to update the endpoint via GraphQL mutation
-        echo "🔄 Attempting to update endpoint via GraphQL..."
-        UPDATE_RESPONSE=$(curl -s -X POST \
-          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
-          -H "Content-Type: application/json" \
-          -d "{\"query\": \"mutation { saveEndpoint(id: \\\"${{ secrets.RUNPOD_ENDPOINT_ID }}\\\", input: { dockerImage: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest\\\" }) { id name } }\"}" \
-          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
-        echo "GraphQL Update Response: $UPDATE_RESPONSE"
-        
-        # Check if update was successful
-        if echo "$UPDATE_RESPONSE" | grep -q '"errors":null' && echo "$UPDATE_RESPONSE" | grep -q '"data"'; then
-          echo "✅ RunPod endpoint updated successfully via GraphQL!"
+        # Attempt to update the template image via GraphQL (try common field names)
+        if [ -n "$TEMPLATE_ID" ] && [ "$TEMPLATE_ID" != "null" ]; then
+          echo "🔄 Updating template image via GraphQL (imageName)..."
+          UPDATE_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"mutation { saveTemplate(input: { id: \\\"${TEMPLATE_ID}\\\", imageName: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }}\\\" }) { id name } }\"}" \
+            "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+          echo "GraphQL Update Response (imageName): $UPDATE_RESPONSE"
+
+          if echo "$UPDATE_RESPONSE" | grep -q 'errors'; then
+            echo "🔁 Retrying with field 'dockerImage'..."
+            UPDATE_RESPONSE=$(curl -s -X POST \
+              -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"query\": \"mutation { saveTemplate(input: { id: \\\"${TEMPLATE_ID}\\\", dockerImage: \\\"${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }}\\\" }) { id name } }\"}" \
+              "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+            echo "GraphQL Update Response (dockerImage): $UPDATE_RESPONSE"
+          fi
         else
-          echo "❌ Failed to update RunPod endpoint via GraphQL"
-          echo "Response: $UPDATE_RESPONSE"
-          echo "⚠️ You may need to update the Docker image manually in RunPod console"
-          echo "📦 Image to use: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"
+          echo "⚠️ Could not resolve templateId for endpoint ${ { secrets.RUNPOD_ENDPOINT_ID } }"
         fi
+        
+        # Final status
+        echo "ℹ️ If the template update failed, update manually in RunPod Console"
+        echo "📦 Use image: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:${{ github.sha }} (prefer SHA tag over latest)"
         
     - name: Summary
       run: |
