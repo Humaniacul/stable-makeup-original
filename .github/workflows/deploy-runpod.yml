@@ -51,17 +51,18 @@ jobs:
         # First, let's list all endpoints to see what's available
         echo "🔍 Listing all endpoints..."
         LIST_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
-          "https://api.runpod.io/v2/endpoints")
+          "https://api.runpod.io/v1/endpoints")
         echo "All Endpoints: $LIST_RESPONSE"
         
         # Then verify the specific endpoint exists
         echo "🔍 Verifying endpoint exists..."
         VERIFY_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
-          "https://api.runpod.io/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}")
+          "https://api.runpod.io/v1/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}")
         echo "Verify Response: $VERIFY_RESPONSE"
         
-        # Update RunPod endpoint with new Docker image
-        RESPONSE=$(curl -s -X PATCH "https://api.runpod.io/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
+        # Update RunPod endpoint with new Docker image (need to find correct API)
+        echo "🔄 Attempting to update endpoint..."
+        RESPONSE=$(curl -s -X PATCH "https://api.runpod.io/v1/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
           -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d '{"docker_image": "${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"}')
