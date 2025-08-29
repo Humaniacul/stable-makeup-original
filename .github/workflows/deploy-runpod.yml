@@ -43,7 +43,6 @@ jobs:
         cache-to: type=gha,mode=max
         
     - name: Trigger RunPod Deployment
-      if: vars.RUNPOD_API_KEY != ''
       run: |
         echo "🚀 Docker image built and pushed successfully!"
         echo "Image: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"
