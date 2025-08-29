@@ -42,21 +42,27 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         
-    - name: Trigger RunPod Deployment
+    - name: Deploy to RunPod
       run: |
         echo "🚀 Docker image built and pushed successfully!"
-        echo "Image: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"
-        echo ""
-        echo "To deploy on RunPod:"
-        echo "1. Go to RunPod Console → Serverless → Your Endpoint"
-        echo "2. Update Docker image to: ${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"
-        echo "3. Or use RunPod API to update endpoint programmatically"
+        echo "🔄 Updating RunPod endpoint..."
         
-        # Optional: If you have RunPod API key, uncomment below to auto-update
-        # curl -X PATCH "https://api.runpod.ai/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
-        #   -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
-        #   -H "Content-Type: application/json" \
-        #   -d '{"docker_image": "${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"}'
+        # Update RunPod endpoint with new Docker image
+        RESPONSE=$(curl -s -X PATCH "https://api.runpod.ai/v2/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
+          -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"docker_image": "${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"}')
+        
+        echo "RunPod API Response: $RESPONSE"
+        
+        # Check if update was successful
+        if echo "$RESPONSE" | grep -q '"success":true\|"status":"success"'; then
+          echo "✅ RunPod endpoint updated successfully!"
+        else
+          echo "❌ Failed to update RunPod endpoint"
+          echo "Response: $RESPONSE"
+          exit 1
+        fi
         
     - name: Summary
       run: |
