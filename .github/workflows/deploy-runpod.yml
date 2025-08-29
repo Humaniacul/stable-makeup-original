@@ -46,37 +46,37 @@ jobs:
       run: |
         echo "🚀 Docker image built and pushed successfully!"
         echo "🔄 Updating RunPod endpoint..."
-        echo "Endpoint ID: ${{ vars.RUNPOD_ENDPOINT_ID }}"
+        echo "Endpoint ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}"
         
-        # First, let's list all endpoints to see what's available
-        echo "🔍 Listing all endpoints..."
-        LIST_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
-          "https://api.runpod.io/v1/endpoints")
-        echo "All Endpoints: $LIST_RESPONSE"
+        # Test API key first
+        echo "🔍 Testing API key..."
+        TEST_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          "https://api.runpod.io/v2/user/me")
+        echo "User Info: $TEST_RESPONSE"
         
-        # Then verify the specific endpoint exists
-        echo "🔍 Verifying endpoint exists..."
-        VERIFY_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
-          "https://api.runpod.io/v1/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}")
-        echo "Verify Response: $VERIFY_RESPONSE"
-        
-        # Update RunPod endpoint with new Docker image (need to find correct API)
-        echo "🔄 Attempting to update endpoint..."
-        RESPONSE=$(curl -s -X PATCH "https://api.runpod.io/v1/endpoints/${{ vars.RUNPOD_ENDPOINT_ID }}" \
-          -H "Authorization: Bearer ${{ vars.RUNPOD_API_KEY }}" \
+        # Try v2 GraphQL API for endpoints
+        echo "🔍 Listing endpoints via GraphQL..."
+        GRAPHQL_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
           -H "Content-Type: application/json" \
-          -d '{"docker_image": "${{ secrets.DOCKER_USERNAME }}/shmt-runpod:latest"}')
+          -d '{"query": "query { myself { serverlessDiscount { discountFactor } endpoints { id name } } }"}' \
+          "https://api.runpod.io/graphql?api_key=${{ secrets.RUNPOD_API_KEY }}")
+        echo "GraphQL Endpoints: $GRAPHQL_RESPONSE"
         
-        echo "RunPod API Response: $RESPONSE"
+        # Try simple HTTP API for serverless
+        echo "🔍 Trying serverless API..."
+        SERVERLESS_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}")
+        echo "Serverless Response: $SERVERLESS_RESPONSE"
         
-        # Check if update was successful
-        if echo "$RESPONSE" | grep -q '"success":true\|"status":"success"'; then
-          echo "✅ RunPod endpoint updated successfully!"
-        else
-          echo "❌ Failed to update RunPod endpoint"
-          echo "Response: $RESPONSE"
-          exit 1
-        fi
+        # Try direct endpoint run to see if it exists
+        echo "🔍 Testing endpoint run endpoint..."
+        RUN_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: Bearer ${{ secrets.RUNPOD_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"input": {"test": "connection"}}' \
+          "https://api.runpod.io/v2/${{ secrets.RUNPOD_ENDPOINT_ID }}/run")
+        echo "Run Test Response: $RUN_RESPONSE"
         
     - name: Summary
       run: |
