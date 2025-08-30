@@ -171,13 +171,23 @@ def handler(event):
         inp = event.get("input", {})
         source_url = inp.get("source_url")
         reference_url = inp.get("reference_url")
+        source_image = inp.get("source_image")  # base64 encoded image
+        reference_image = inp.get("reference_image")  # base64 encoded image
         ddim_steps = min(100, max(1, int(inp.get("ddim_steps", 50))))
         guidance_scale = max(0.1, min(3.0, float(inp.get("guidance_scale", 1.0))))
 
-        if not source_url or not reference_url:
-            return {"error": "source_url and reference_url are required"}
+        # Check if we have either URLs or base64 images
+        has_urls = source_url and reference_url
+        has_base64 = source_image and reference_image
         
-        print(f"Processing: source={source_url}, ref={reference_url}, steps={ddim_steps}")
+        if not has_urls and not has_base64:
+            return {"error": "Either source_url/reference_url OR source_image/reference_image are required"}
+        
+        print(f"Processing: steps={ddim_steps}, guidance={guidance_scale}")
+        if has_urls:
+            print(f"Using URLs: source={source_url}, ref={reference_url}")
+        else:
+            print("Using base64 encoded images")
     except Exception as e:
         return {"error": f"Setup failed: {str(e)}"}
 
@@ -186,9 +196,21 @@ def handler(event):
             td = FsPath(td)
             src_path = td / "src.png"
             ref_path = td / "ref.png"
-            print("Downloading images...")
-            download_file(source_url, src_path)
-            download_file(reference_url, ref_path)
+            
+            if has_urls:
+                # Download from URLs
+                print("Downloading images from URLs...")
+                download_file(source_url, src_path)
+                download_file(reference_url, ref_path)
+            else:
+                # Save base64 images
+                print("Saving base64 images...")
+                import base64
+                with open(src_path, "wb") as f:
+                    f.write(base64.b64decode(source_image))
+                with open(ref_path, "wb") as f:
+                    f.write(base64.b64decode(reference_image))
+            
             src_img = Image.open(src_path).convert('RGB')
             ref_img = Image.open(ref_path).convert('RGB')
             print(f"Images loaded: src={src_img.size}, ref={ref_img.size}")
@@ -244,7 +266,7 @@ def handler(event):
             result_img = Image.fromarray((result_np * 255).astype(np.uint8))
 
         print("Inference complete!")
-        return {"image_base64": pil_to_b64(result_img)}
+        return {"image": pil_to_b64(result_img)}
     
     except Exception as e:
         print(f"Inference error: {str(e)}")
